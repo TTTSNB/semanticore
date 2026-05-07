@@ -14,7 +14,7 @@ rustup component add rustfmt clippy
 Clone, build, and test:
 
 ```sh
-git clone https://github.com/elliott_risch/semanticore.git
+git clone https://github.com/TTTSNB/semanticore.git
 cd semanticore
 cargo build
 cargo test

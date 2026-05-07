@@ -6,7 +6,7 @@ members = ["crates/semanticore-core"]
 version = "0.0.0"
 edition = "2021"
 license = "Apache-2.0"
-repository = "https://github.com/elliott_risch/semanticore"
+repository = "https://github.com/TTTSNB/semanticore"
 authors = ["Elliott Risch <elliottrisch@gmail.com>"]
 rust-version = "1.75"
 
