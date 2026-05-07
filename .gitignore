@@ -1,6 +1,36 @@
+# Rust
 /target
+**/*.rs.bk
 Cargo.lock
+
+# Python (for binding crates)
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+.env
+dist/
+*.egg-info/
+
+# Node (for binding crates)
+node_modules/
+dist/
+.npm/
+*.log
+
+# OS
 .DS_Store
-*.swp
+Thumbs.db
+
+# Editors
 .idea/
 .vscode/
+*.swp
+*.swo
+*~
+
+# Coverage
+coverage/
+*.profraw
+*.lcov
