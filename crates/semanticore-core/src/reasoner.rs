@@ -29,7 +29,7 @@ pub trait Reasoner: Send + Sync {
 
     /// Bind this reasoner to a storage instance, producing a view that scopes
     /// subsequent operations to that storage.
-    fn over(&self, storage: &Self::Storage) -> ReasonerView<'_, Self>
+    fn over<'a>(&'a self, storage: &'a Self::Storage) -> ReasonerView<'a, Self>
     where
         Self: Sized;
 }

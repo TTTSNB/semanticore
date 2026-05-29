@@ -201,6 +201,15 @@ pub enum DatalogError {
         /// The limit that was hit.
         limit: u64,
     },
+    /// The operation requires a premium feature that is not licensed. Premium
+    /// engines map their licensing failure into this variant; OSS code never
+    /// produces it. (Carries the feature name as a string so `semanticore-core`
+    /// takes no dependency on the premium licensing crate.)
+    #[error("feature not licensed: {feature}")]
+    License {
+        /// The premium feature that was required.
+        feature: String,
+    },
 }
 
 #[cfg(test)]
