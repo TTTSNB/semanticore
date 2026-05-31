@@ -87,6 +87,68 @@ impl ConsistencyResult {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Axiom(pub String);
 
+/// The OWL reasoning family error. Shared by all four engines (EL/QL/RL/DL) so the
+/// dispatch facade can unify error handling. Mirrors the `ShaclError`/`DatalogError`
+/// pattern; the `License` variant carries the feature name as a string so core
+/// takes no dependency on the premium licensing crate.
+#[derive(Debug, thiserror::Error)]
+pub enum OwlError {
+    /// An RDF graph could not be parsed into the OWL axiom IR.
+    #[error("owl load error: {reason}")]
+    Load {
+        /// What went wrong.
+        reason: String,
+    },
+    /// The ontology uses an axiom/construct outside the engine's profile.
+    #[error("unsupported axiom for {profile} profile: {axiom}")]
+    UnsupportedAxiom {
+        /// A description of the offending axiom.
+        axiom: String,
+        /// The profile that rejects it.
+        profile: String,
+    },
+    /// The ontology is not in the requested/required profile.
+    #[error("profile violation: {reason}")]
+    ProfileViolation {
+        /// Why the ontology falls out of profile.
+        reason: String,
+    },
+    /// Reasoning detected a logical inconsistency where the caller required one not
+    /// to exist (most consistency checks return `ConsistencyResult`, not this).
+    #[error("consistency violation: {reason}")]
+    ConsistencyViolation {
+        /// Explanation.
+        reason: String,
+    },
+    /// A materialization/saturation pass failed.
+    #[error("materialization failure: {reason}")]
+    MaterializationFailure {
+        /// Explanation.
+        reason: String,
+    },
+    /// Reasoning exceeded its resource bound (e.g. tableau expansion cap).
+    #[error("evaluation limit exceeded: {limit}")]
+    EvaluationLimitExceeded {
+        /// The limit reached.
+        limit: u64,
+    },
+    /// A license/quota bound was exceeded.
+    #[error("quota exceeded: {kind} (limit {limit})")]
+    QuotaExceeded {
+        /// The quota kind.
+        kind: String,
+        /// The limit hit.
+        limit: u64,
+    },
+    /// The operation requires a premium feature that is not licensed. Premium
+    /// engines map their licensing failure into this variant; OSS never produces it.
+    #[error("feature not licensed: {feature}")]
+    License {
+        /// The premium feature required.
+        feature: String,
+    },
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -132,5 +194,18 @@ mod tests {
             Axiom("SubClassOf(:A :B)".into()),
             Axiom("SubClassOf(:A :B)".into())
         );
+    }
+
+    #[test]
+    fn owl_error_displays() {
+        let e = OwlError::UnsupportedAxiom {
+            axiom: "ObjectUnionOf(...)".into(),
+            profile: "EL".into(),
+        };
+        assert!(e.to_string().contains("unsupported axiom for EL"));
+        let l = OwlError::License {
+            feature: "OwlDl".into(),
+        };
+        assert!(l.to_string().contains("not licensed"));
     }
 }
