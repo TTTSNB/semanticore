@@ -12,6 +12,7 @@
 //! `Materialization`/`IncrementalReasoner`/`Entailment` mix-ins, are deferred to
 //! the remainder of Phase 3 and intentionally not defined here.
 
+use crate::model::Quad;
 use crate::storage::Storage;
 
 /// The base trait every reasoner implements.
@@ -146,6 +147,94 @@ impl ProfileSet {
     pub const fn is_empty(self) -> bool {
         self.0 == 0
     }
+}
+
+/// A reasoner that computes the entailed graph and writes it back to storage —
+/// the forward-chaining surface. Dominant pattern for OWL EL/RL and Datalog
+/// (RFC 0003).
+pub trait Materialization: Reasoner {
+    /// Compute all entailments and persist them to storage.
+    fn materialize(&self, storage: &mut Self::Storage)
+        -> Result<MaterializationStats, Self::Error>;
+
+    /// Remove all materialized entailments, leaving the asserted base.
+    fn dematerialize(&self, storage: &mut Self::Storage) -> Result<(), Self::Error>;
+}
+
+/// Statistics returned by a materialization pass.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct MaterializationStats {
+    /// Quads added to storage.
+    pub quads_added: u64,
+    /// Quads removed (rare; a few rule fires can retract).
+    pub quads_removed: u64,
+    /// Fixpoint iterations run.
+    pub iterations: u32,
+    /// Wall-clock elapsed, milliseconds.
+    pub elapsed_ms: f64,
+}
+
+/// A reasoner that maintains the entailed graph under updates without redoing the
+/// full materialization. Extends [`Materialization`] because incremental update
+/// implies a baseline to update against (a conforming impl may always fall back
+/// to `dematerialize` + `materialize`).
+pub trait IncrementalReasoner: Materialization {
+    /// Update materialization to reflect newly inserted quads. The caller must
+    /// have already inserted them into storage.
+    fn on_insert(
+        &self,
+        storage: &mut Self::Storage,
+        inserted: &[Quad],
+    ) -> Result<MaterializationStats, Self::Error>;
+
+    /// Update materialization to reflect removed quads. The caller must have
+    /// already removed them from the asserted base.
+    fn on_remove(
+        &self,
+        storage: &mut Self::Storage,
+        removed: &[Quad],
+    ) -> Result<MaterializationStats, Self::Error>;
+}
+
+/// A reasoner that answers entailment queries without writing to storage — the
+/// backward-chaining surface. The natural surface for OWL QL (query rewriting)
+/// and OWL DL (tableaux), and a secondary surface for EL/RL.
+pub trait Entailment: Reasoner {
+    /// Does the asserted graph entail the given quad?
+    fn entails(&self, storage: &Self::Storage, candidate: &Quad) -> Result<bool, Self::Error>;
+
+    /// Iterate over all entailed quads. Implementations may stream lazily;
+    /// `Box<dyn …>` keeps the trait object-safe so a Session can hold
+    /// `dyn Entailment`.
+    fn entailed_quads<'a>(
+        &'a self,
+        storage: &'a Self::Storage,
+    ) -> Box<dyn Iterator<Item = Result<Quad, Self::Error>> + 'a>;
+}
+
+/// The OWL reasoning surface. Every OWL engine (EL/QL/RL/DL) implements this; the
+/// sound-and-complete subset of forward vs backward differs per profile and is
+/// documented per engine. Peer of [`crate::shacl::ShaclValidator`] and
+/// [`crate::datalog::DatalogEngine`] over the [`Reasoner`] base trait.
+pub trait OwlReasoner: Materialization + IncrementalReasoner + Entailment {
+    /// Profiles this reasoner can be asked to operate under.
+    fn supported_profiles(&self) -> &[OwlProfile];
+
+    /// Compute the class hierarchy (subClassOf closure with equivalence classes
+    /// collapsed).
+    fn classify(&self, storage: &Self::Storage) -> Result<crate::owl::ClassHierarchy, Self::Error>;
+
+    /// Compute, for each named individual, its asserted and derived types.
+    fn realize(
+        &self,
+        storage: &Self::Storage,
+    ) -> Result<crate::owl::InstanceRealization, Self::Error>;
+
+    /// Check global consistency.
+    fn check_consistency(
+        &self,
+        storage: &Self::Storage,
+    ) -> Result<crate::owl::ConsistencyResult, Self::Error>;
 }
 
 #[cfg(test)]

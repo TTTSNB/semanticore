@@ -25,6 +25,7 @@
 
 pub mod datalog;
 pub mod model;
+pub mod owl;
 pub mod reasoner;
 pub mod shacl;
 pub mod storage;
