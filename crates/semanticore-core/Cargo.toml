@@ -7,6 +7,10 @@ repository.workspace = true
 authors.workspace = true
 rust-version.workspace = true
 description = "Shared types and traits for the semantiCore Rust ecosystem (IRIs, terms, triples, graphs)."
+keywords = ["semantic", "rdf", "graph", "reasoning", "owl"]
+categories = ["data-structures", "parsing", "algorithms"]
+documentation = "https://docs.rs/semanticore-core/"
+readme = "README.md"
 
 [dependencies]
 thiserror = "1.0"
