@@ -91,8 +91,10 @@ pub struct ValidationResult {
 /// A full SHACL validation report (`sh:ValidationReport`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ShaclValidationReport {
-    /// `sh:conforms` — true iff there are no results of severity
-    /// [`Severity::Violation`].
+    /// `sh:conforms` — true iff the report has no results of any severity.
+    /// Per SHACL §3.5 conformance requires an empty result set regardless of
+    /// whether results are [`Severity::Violation`], [`Severity::Warning`], or
+    /// [`Severity::Info`].
     pub conforms: bool,
     /// The validation results (`sh:result`).
     pub results: Vec<ValidationResult>,
@@ -121,7 +123,8 @@ impl ShaclValidationReport {
 pub struct NodeValidationResult {
     /// The focus node that was validated.
     pub focus: NamedOrBlankNode,
-    /// Whether it conforms (no violation-severity results).
+    /// Whether the focus node conforms — true iff no results were produced for
+    /// it, of any severity (SHACL §3.5).
     pub conforms: bool,
     /// The results for this focus node.
     pub results: Vec<ValidationResult>,
