@@ -69,7 +69,7 @@ pub enum Severity {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ValidationResult {
     /// The focus node the result is about (`sh:focusNode`).
-    pub focus_node: NamedOrBlankNode,
+    pub focus_node: Term,
     /// Severity (`sh:resultSeverity`).
     pub result_severity: Severity,
     /// The constraint component that produced the result
@@ -107,12 +107,11 @@ impl ShaclValidationReport {
         }
     }
 
-    /// Build a report from results, deriving `conforms` from the presence of any
-    /// [`Severity::Violation`].
+    /// Build a report from results, deriving `conforms` from whether the result
+    /// set is empty. Per SHACL §3.5 a graph conforms iff the validation report
+    /// contains **no results** of any severity.
     pub fn from_results(results: Vec<ValidationResult>) -> Self {
-        let conforms = !results
-            .iter()
-            .any(|r| r.result_severity == Severity::Violation);
+        let conforms = results.is_empty();
         Self { conforms, results }
     }
 }
@@ -187,7 +186,7 @@ mod tests {
 
     fn result(severity: Severity) -> ValidationResult {
         ValidationResult {
-            focus_node: NamedOrBlankNode::Named(NamedNode::new("https://example.org/n")),
+            focus_node: Term::Named(NamedNode::new("https://example.org/n")),
             result_severity: severity,
             source_constraint_component: NamedNode::new(
                 "http://www.w3.org/ns/shacl#MinCountConstraintComponent",
@@ -217,9 +216,84 @@ mod tests {
     }
 
     #[test]
-    fn warning_only_still_conforms() {
+    fn warning_only_does_not_conform() {
+        // SHA-CONF-sev: SHACL §3.5 — any result → conforms:false, regardless of severity.
         let r = ShaclValidationReport::from_results(vec![result(Severity::Warning)]);
-        assert!(r.conforms);
+        assert!(!r.conforms);
+    }
+
+    // -----------------------------------------------------------------------
+    // SHA-CONF-sev: spec-correct conforms logic (FAILING against current code)
+    // -----------------------------------------------------------------------
+    //
+    // SHACL §3.5: "A graph conforms if and only if a validation report produced
+    // by validating the graph contains no results."
+    //
+    // The current implementation computes:
+    //   conforms = !results.any(|r| r.result_severity == Severity::Violation)
+    // This is WRONG: a Warning/Info-only report should still yield conforms:false.
+    //
+    // These tests MUST FAIL against the current code and MUST PASS after the fix:
+    //   let conforms = results.is_empty();
+
+    /// SHA-CONF-sev: a Warning-severity result must make conforms = false.
+    ///
+    /// The existing test `warning_only_still_conforms` (above) codifies the BUG.
+    /// This test encodes the SPEC-CORRECT behavior.  Both tests coexist until the
+    /// fix is applied; at that point `warning_only_still_conforms` will be renamed
+    /// to `warning_only_does_not_conform` and its assertion inverted.
+    #[test]
+    fn sha_conf_warning_result_makes_conforms_false() {
+        // SHA-CONF-sev: SHACL §3.5 — any result → conforms:false.
+        // Currently from_results returns conforms:true for Warning-only → FAILS here.
+        let r = ShaclValidationReport::from_results(vec![result(Severity::Warning)]);
+        assert!(
+            !r.conforms,
+            "SHA-CONF-sev: a Warning-severity result must make conforms = false; \
+             SHACL §3.5: conformance = no results of ANY severity. \
+             from_results currently returns conforms:true for Warning-only results."
+        );
+    }
+
+    /// SHA-CONF-sev: an Info-severity result must make conforms = false.
+    #[test]
+    fn sha_conf_info_result_makes_conforms_false() {
+        // SHA-CONF-sev: Info-severity result → conforms must be false.
+        // Currently from_results returns conforms:true for Info-only → FAILS here.
+        let r = ShaclValidationReport::from_results(vec![result(Severity::Info)]);
+        assert!(
+            !r.conforms,
+            "SHA-CONF-sev: an Info-severity result must make conforms = false; \
+             SHACL §3.5: 'a graph conforms iff the validation report has no results'. \
+             from_results currently returns conforms:true for Info-only results."
+        );
+    }
+
+    /// SHA-CONF-sev: a mix of Warning + Info results (no Violations) must make
+    /// conforms = false.
+    #[test]
+    fn sha_conf_mixed_warning_info_makes_conforms_false() {
+        // SHA-CONF-sev: two non-Violation results → conforms must be false.
+        let r = ShaclValidationReport::from_results(vec![
+            result(Severity::Warning),
+            result(Severity::Info),
+        ]);
+        assert!(
+            !r.conforms,
+            "SHA-CONF-sev: Warning+Info results (no Violation) must make \
+             conforms = false; got conforms:true"
+        );
+    }
+
+    /// SHA-CONF-sev non-regression: empty results still yields conforms = true.
+    #[test]
+    fn sha_conf_empty_results_conforms_true() {
+        // Non-regression: no results → conforms:true.  Must pass before and after fix.
+        let r = ShaclValidationReport::from_results(vec![]);
+        assert!(
+            r.conforms,
+            "non-regression SHA-CONF-sev: from_results([]) must yield conforms:true"
+        );
     }
 
     #[test]
