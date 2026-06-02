@@ -24,6 +24,11 @@ pub struct ClassHierarchy {
     pub equivalence_classes: Vec<EquivalenceClass>,
     /// Direct subclass relations (transitive-reduced, redundancy removed).
     pub direct_subclass_of: Vec<(ClassIri, ClassIri)>,
+    /// Named classes that are unsatisfiable (equivalent to `owl:Nothing`).
+    /// These are classes C such that `C ⊑ owl:Nothing` is entailed — no
+    /// consistent model can contain an instance of C.  Empty when no
+    /// unsatisfiable named class is detected.
+    pub unsatisfiable: Vec<ClassIri>,
 }
 
 impl ClassHierarchy {
