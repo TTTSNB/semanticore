@@ -35,18 +35,18 @@ Pre-1.0. Active development. APIs are unstable.
 
 - Phase 0 — decisions resolved
 - Phase 1 — repo + infrastructure scaffolded
-- Phase 2 — architecture spec complete (RFCs 0001–0006)
-- Phase 3 — open-tier implementation (next)
+- Phase 2 — architecture spec complete (RFCs 0001–0005)
+- Phase 3 — open-tier implementation: the reasoner trait surface ships as `semanticore-core` 0.1.0
 
-Currently published: nothing on crates.io yet. v0.1.0 lands at the close of Phase 3.
+First release: `semanticore-core` 0.1.0, the storage and reasoner trait surface (SHACL, Datalog, OWL). See [CHANGELOG.md](CHANGELOG.md).
 
 ## Install
 
 ```sh
 cargo add semanticore-core
-cargo add semanticore-context
-cargo add semanticore-projection
 ```
+
+`semanticore-context` and `semanticore-projection` (RFCs 0004 and 0005) are specified but not yet published.
 
 ```sh
 pip install semanticore

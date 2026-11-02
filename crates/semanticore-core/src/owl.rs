@@ -1,4 +1,4 @@
-//! OWL reasoning return types (RFC 0003 / RFC 0009).
+//! OWL reasoning return types (RFC 0003).
 //!
 //! These are the OSS-side result types of [`crate::reasoner::OwlReasoner`]
 //! (`classify` / `realize` / `check_consistency`). They are backend-neutral and
@@ -72,8 +72,8 @@ pub enum ConsistencyResult {
     Consistent,
     /// The ontology is inconsistent.
     Inconsistent {
-        /// Optional justification axioms. `None` at v0.1; RFC 0009 graduates
-        /// proof traces.
+        /// Optional justification axioms. `None` at v0.1; proof traces are
+        /// left to a future RFC.
         explanation: Option<Vec<Axiom>>,
     },
 }
