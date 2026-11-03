@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/semanticore-context",
     "crates/semanticore-core",
     "crates/semanticore-storage-testkit",
     "crates/semanticore-store-oxigraph",
