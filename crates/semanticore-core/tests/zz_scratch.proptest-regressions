@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 82b74eead4116681a21a203a0652e5cce8dcf1ad67d2ed6e8494424cb286efae # shrinks to v = "", t = ""
+cc 5f052dd057037f307b8f9082f2d182a3414ca1ea83b7d60fb8ec8a13e379ba41 # shrinks to v = "", d = NamedNode { iri: "http://www.w3.org/1999/02/22-rdf-syntax-ns#langString" }
