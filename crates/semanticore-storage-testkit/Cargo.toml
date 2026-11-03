@@ -1,0 +1,17 @@
+[package]
+name = "semanticore-storage-testkit"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+description = "Dev-only: the RFC 0002 Storage contract as a reusable test suite, plus a reference in-memory store."
+publish = false
+
+[dependencies]
+semanticore-core = { path = "../semanticore-core" }
+proptest = "1.12.0"
+
+[lints]
+workspace = true

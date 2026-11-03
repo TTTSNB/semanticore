@@ -1,6 +1,9 @@
 [workspace]
 resolver = "2"
-members = ["crates/semanticore-core"]
+members = [
+    "crates/semanticore-core",
+    "crates/semanticore-storage-testkit",
+]
 
 [workspace.package]
 version = "0.1.0"
