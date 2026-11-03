@@ -6,9 +6,9 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 rust-version.workspace = true
-description = "Shared types and traits for the semantiCore Rust ecosystem (IRIs, terms, triples, graphs)."
+description = "RDF term model plus the storage and reasoner traits (OWL, SHACL, Datalog) for the semantiCore ecosystem; traits only, no implementations."
 keywords = ["semantic", "rdf", "graph", "reasoning", "owl"]
-categories = ["data-structures", "parsing", "algorithms"]
+categories = ["data-structures", "database", "science"]
 documentation = "https://docs.rs/semanticore-core/"
 readme = "README.md"
 
@@ -17,3 +17,7 @@ thiserror = "1.0"
 
 [lints]
 workspace = true
+
+[package.metadata.docs.rs]
+# docs.rs reads this table from the package manifest, not the workspace.
+targets = ["x86_64-unknown-linux-gnu"]
