@@ -1,0 +1,30 @@
+[package]
+name = "semanticore-store-oxigraph"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+description = "Oxigraph-backed implementation of the semanticore-core Storage trait (in-memory and file-backed)."
+keywords = ["semantic", "rdf", "graph", "oxigraph", "storage"]
+categories = ["database", "data-structures"]
+documentation = "https://docs.rs/semanticore-store-oxigraph/"
+readme = "README.md"
+
+[dependencies]
+semanticore-core = { version = "0.1.0", path = "../semanticore-core" }
+# Pinned exactly: the adapter relies on Oxigraph's transaction and locking
+# behaviour (see the crate docs), so upgrades are deliberate. MIT OR Apache-2.0.
+oxigraph = { version = "=0.5.13", default-features = false, features = ["rocksdb"] }
+# The XSD parsers Oxigraph uses, pinned to the version oxigraph 0.5.13
+# resolves, to detect literals it would store in canonical form.
+oxsdatatypes = "=0.2.4"
+
+[dev-dependencies]
+semanticore-storage-testkit = { path = "../semanticore-storage-testkit" }
+proptest = "1.12.0"
+tempfile = "3"
+
+[lints]
+workspace = true
