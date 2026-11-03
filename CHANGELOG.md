@@ -19,6 +19,8 @@ types only; reasoner implementations live outside this crate.
   `DatalogError`.
 - `ClassHierarchy::unsatisfiable`, which lists the unsatisfiable classes found by
   `classify`.
+- `model::LiteralError`, returned by the fallible `Literal` constructors. It is
+  `#[non_exhaustive]`.
 
 ### Changed
 - SHACL validation results take `focus_node` as a `Term`, not an IRI only, so blank
@@ -26,3 +28,9 @@ types only; reasoner implementations live outside this crate.
 - SHACL `conforms` is false when a result of any severity is present, not just a
   `Violation`.
 - MSRV is 1.88, to match the workspace dependency graph.
+- **Breaking:** `Literal::new_typed` and `Literal::new_lang` now return
+  `Result<Literal, LiteralError>`, so an ill-formed literal can no longer be
+  built (RDF 1.1 Concepts §3.3). `new_typed` rejects `rdf:langString` as the
+  datatype (`LiteralError::LangStringWithoutTag`; use `new_lang`), and `new_lang`
+  rejects an empty language tag (`LiteralError::EmptyLanguageTag`). Callers add
+  `?` or handle the error. `Literal::new_simple` is unchanged and infallible.
