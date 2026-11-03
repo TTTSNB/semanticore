@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/semanticore-context",
+    "crates/semanticore-context-py",
     "crates/semanticore-core",
     "crates/semanticore-storage-testkit",
     "crates/semanticore-store-oxigraph",

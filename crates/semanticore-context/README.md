@@ -31,6 +31,7 @@ Reserved: SHACL (`Session::validate`) and Datalog
 Not yet implemented, and returning `SessionError::NotYetImplemented`: the
 default OWL 2 EL reasoner (`Session::reason`, inference queries, reasoner
 hints), the default ANN/HNSW index (similarity queries) and SPARQL queries.
-The Python and TypeScript bindings do not exist yet.
+The Python binding is `semanticore-context-py`; the TypeScript binding does
+not exist yet.
 
 Licensed under Apache-2.0.
