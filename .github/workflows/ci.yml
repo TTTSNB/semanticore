@@ -37,5 +37,48 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      # semanticore-context-py's Rust-side tests embed CPython and link
+      # libpython; setup-python provides a shared build of the minimum
+      # supported version.
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.10"
       - name: cargo test
         run: cargo test --all --all-features
+        env:
+          LD_LIBRARY_PATH: ${{ env.pythonLocation }}/lib
+
+  python:
+    name: python (${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The abi3 floor and the newest CPython the wheel is tested on.
+        python: ["3.10", "3.13"]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: python-wheel
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install build and test tools
+        run: python -m pip install "maturin==1.16.0" "pytest==9.2.0" "mypy==2.4.1"
+      - name: Build the abi3 wheel
+        run: maturin build -m crates/semanticore-context-py/Cargo.toml --out dist
+      - name: Install the wheel
+        run: |
+          ls dist
+          test -n "$(ls dist/*-cp310-abi3-*.whl)"
+          python -m pip install dist/*.whl
+      - name: pytest
+        run: python -m pytest crates/semanticore-context-py/tests
+      - name: Check the .pyi stub against the built module
+        # Run outside the source tree so the installed wheel is checked.
+        working-directory: ${{ runner.temp }}
+        run: >-
+          python -m mypy.stubtest semanticore_context
+          --allowlist "$GITHUB_WORKSPACE/crates/semanticore-context-py/stubtest-allowlist.txt"
