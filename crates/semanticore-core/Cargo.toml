@@ -18,6 +18,9 @@ thiserror = "1.0"
 [lints]
 workspace = true
 
+[dev-dependencies]
+proptest = "1.12.0"
+
 [package.metadata.docs.rs]
 # docs.rs reads this table from the package manifest, not the workspace.
 targets = ["x86_64-unknown-linux-gnu"]
