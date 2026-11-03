@@ -1,0 +1,27 @@
+[package]
+name = "semanticore-context"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+description = "Context OS for agentic applications: a Session over enduring, major and minor context tiers (RFC 0004)."
+keywords = ["semantic", "rdf", "context", "agents", "memory"]
+categories = ["data-structures", "database"]
+documentation = "https://docs.rs/semanticore-context/"
+readme = "README.md"
+
+[dependencies]
+semanticore-core = { version = "0.1.0", path = "../semanticore-core" }
+semanticore-store-oxigraph = { version = "0.1.0", path = "../semanticore-store-oxigraph" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1.0"
+
+[dev-dependencies]
+semanticore-storage-testkit = { path = "../semanticore-storage-testkit" }
+tempfile = "3"
+
+[lints]
+workspace = true
