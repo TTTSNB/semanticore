@@ -1,0 +1,40 @@
+[package]
+name = "semanticore-context-py"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+description = "Python (PyO3) binding for semanticore-context (RFC 0004)."
+readme = "README.md"
+# Wheels are built with maturin (see pyproject.toml); nothing is published
+# to crates.io or PyPI from this crate yet.
+publish = false
+
+[lib]
+# Not `semanticore_context`: that would collide with the library crate this
+# binds. The Python module is still named `semanticore_context` (see the
+# `#[pymodule]` in src/lib.rs and `module-name` in pyproject.toml).
+name = "semanticore_context_py"
+# `cdylib` is the extension module maturin packages; `rlib` lets the Rust
+# unit tests link against the conversion layer.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+semanticore-context = { version = "0.1.0", path = "../semanticore-context" }
+# The RDF term model (`Quad`, `Term`, ...) that appears in the Context API.
+semanticore-core = { version = "0.1.0", path = "../semanticore-core" }
+# abi3: one wheel per platform for every CPython >= 3.10. Extension-module
+# linking is switched on by maturin via PYO3_BUILD_EXTENSION_MODULE, so plain
+# `cargo test` still links libpython for the Rust-side tests.
+pyo3 = { version = "0.30.1", features = ["abi3-py310"] }
+serde_json = "1"
+
+[dev-dependencies]
+# Rust-side tests start an embedded interpreter.
+pyo3 = { version = "0.30.1", features = ["auto-initialize"] }
+tempfile = "3"
+
+[lints]
+workspace = true

@@ -1,0 +1,3 @@
+# maturin packages the extension as semanticore_context/semanticore_context.*.so
+# behind a re-exporting __init__.py; the stub describes the package.
+semanticore_context.semanticore_context
