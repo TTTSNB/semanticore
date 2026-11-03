@@ -25,7 +25,18 @@ unmaintained = "workspace"
 yanked = "deny"
 # Add entries as { id = "RUSTSEC-YYYY-NNNN", reason = "..." } when an
 # advisory has been assessed and accepted.
-ignore = []
+ignore = [
+    # quick-xml 0.37.5 comes only through oxigraph 0.5.13, which pins
+    # oxrdfio =0.2.7 and sparesults =0.3.5, both on quick-xml 0.37; the fix
+    # is in 0.41 and no oxigraph release uses it yet. quick-xml is only used
+    # to parse RDF/XML and SPARQL XML results. semanticore-store-oxigraph's
+    # Storage implementation never parses XML; only callers who parse
+    # untrusted XML through `OxigraphStore::oxigraph()` are exposed (CPU or
+    # memory exhaustion, no memory unsafety). Drop these when oxigraph moves
+    # to quick-xml >= 0.41.
+    { id = "RUSTSEC-2026-0194", reason = "quick-xml via oxigraph 0.5.13; no XML parsing on the Storage path; no patched oxigraph yet" },
+    { id = "RUSTSEC-2026-0195", reason = "quick-xml via oxigraph 0.5.13; no XML parsing on the Storage path; no patched oxigraph yet" },
+]
 
 # ---------------------------------------------------------------------------
 # Licenses
@@ -73,7 +84,14 @@ workspace-default-features = "allow"
 external-default-features = "allow"
 deny = []
 skip = []
-skip-tree = []
+skip-tree = [
+    # oxigraph's tree is on thiserror 2, rand 0.9 / getrandom 0.3 and (through
+    # bindgen for RocksDB) syn 3, while semanticore-core uses thiserror 1 and
+    # the dev tools (proptest, tempfile) use rand 0.10 / getrandom 0.4. The
+    # entry names the exact pinned version, so it stops applying, and the
+    # duplicates resurface for review, when oxigraph is upgraded.
+    { crate = "oxigraph@0.5.13", reason = "upstream dependency versions lag or lead the workspace; see comment" },
+]
 
 # ---------------------------------------------------------------------------
 # Sources
