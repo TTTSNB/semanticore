@@ -4,13 +4,307 @@
 //! `ShaclValidator` is a peer of [`crate::datalog::DatalogEngine`] over the
 //! [`crate::reasoner::Reasoner`] base trait rather than a materialization trait.
 //! The report types here are the canonical SHACL report vocabulary shared
-//! between the engine and any consumer; the premium engine projects them to the
-//! DataFrame shape the maplib seam exposes.
+//! between any engine and its consumers; engines may additionally project them
+//! to other shapes (for example tabular output) outside this crate.
 
 use crate::model::{NamedNode, NamedOrBlankNode, Term};
 use crate::reasoner::Reasoner;
 
 /// A SHACL validator over a data graph and a shapes graph.
+///
+/// # Example
+///
+/// A toy validator for a single, flattened "at least one value" rule, called
+/// through the trait:
+///
+/// ```
+/// # use std::sync::Mutex;
+/// #
+/// # use semanticore_core::model::{NamedNode, NamedOrBlankNode, NamedOrDefault, Quad, Term};
+/// # use semanticore_core::storage::{
+/// #     Storage, StorageCapabilities, StorageError, StorageTransaction, TransactionIsolation,
+/// # };
+/// #
+/// # /// A toy in-memory store: one `Vec<Quad>` behind a mutex.
+/// # #[derive(Default)]
+/// # struct MemStore {
+/// #     quads: Mutex<Vec<Quad>>,
+/// # }
+/// #
+/// # /// A transaction that stages writes locally and applies them on commit.
+/// # struct MemTx<'a> {
+/// #     store: &'a MemStore,
+/// #     writable: bool,
+/// #     inserted: Vec<Quad>,
+/// #     removed: Vec<Quad>,
+/// # }
+/// #
+/// # impl MemTx<'_> {
+/// #     /// The committed quads with this transaction's staged writes applied.
+/// #     fn snapshot(&self) -> Vec<Quad> {
+/// #         let base = self.store.quads.lock().unwrap();
+/// #         base.iter()
+/// #             .filter(|q| !self.removed.contains(q))
+/// #             .chain(self.inserted.iter())
+/// #             .cloned()
+/// #             .collect()
+/// #     }
+/// #
+/// #     fn check_writable(&self) -> Result<(), StorageError> {
+/// #         if self.writable {
+/// #             Ok(())
+/// #         } else {
+/// #             Err(StorageError::Backend("read-only transaction".into()))
+/// #         }
+/// #     }
+/// # }
+/// #
+/// # impl StorageTransaction for MemTx<'_> {
+/// #     type Error = StorageError;
+/// #
+/// #     fn insert(&mut self, quad: &Quad) -> Result<bool, StorageError> {
+/// #         self.check_writable()?;
+/// #         if self.contains(quad)? {
+/// #             return Ok(false);
+/// #         }
+/// #         match self.removed.iter().position(|q| q == quad) {
+/// #             Some(i) => {
+/// #                 self.removed.swap_remove(i);
+/// #             }
+/// #             None => self.inserted.push(quad.clone()),
+/// #         }
+/// #         Ok(true)
+/// #     }
+/// #
+/// #     fn remove(&mut self, quad: &Quad) -> Result<bool, StorageError> {
+/// #         self.check_writable()?;
+/// #         if !self.contains(quad)? {
+/// #             return Ok(false);
+/// #         }
+/// #         match self.inserted.iter().position(|q| q == quad) {
+/// #             Some(i) => {
+/// #                 self.inserted.swap_remove(i);
+/// #             }
+/// #             None => self.removed.push(quad.clone()),
+/// #         }
+/// #         Ok(true)
+/// #     }
+/// #
+/// #     fn contains(&self, quad: &Quad) -> Result<bool, StorageError> {
+/// #         Ok(self.snapshot().contains(quad))
+/// #     }
+/// #
+/// #     fn quads_for_pattern<'a>(
+/// #         &'a self,
+/// #         s: Option<&NamedOrBlankNode>,
+/// #         p: Option<&NamedNode>,
+/// #         o: Option<&Term>,
+/// #         g: Option<&NamedOrDefault>,
+/// #     ) -> Box<dyn Iterator<Item = Result<Quad, StorageError>> + 'a> {
+/// #         let (s, p, o, g) = (s.cloned(), p.cloned(), o.cloned(), g.cloned());
+/// #         // A real backend streams from an index; the toy filters a snapshot.
+/// #         Box::new(
+/// #             self.snapshot()
+/// #                 .into_iter()
+/// #                 .filter(move |q| {
+/// #                     s.as_ref().is_none_or(|s| &q.subject == s)
+/// #                         && p.as_ref().is_none_or(|p| &q.predicate == p)
+/// #                         && o.as_ref().is_none_or(|o| &q.object == o)
+/// #                         && g.as_ref().is_none_or(|g| &q.graph == g)
+/// #                 })
+/// #                 .map(Ok),
+/// #         )
+/// #     }
+/// #
+/// #     fn commit(self) -> Result<(), StorageError> {
+/// #         let store = self.store;
+/// #         let mut base = store.quads.lock().unwrap();
+/// #         base.retain(|q| !self.removed.contains(q));
+/// #         base.extend(self.inserted);
+/// #         Ok(())
+/// #     }
+/// #
+/// #     fn rollback(self) -> Result<(), StorageError> {
+/// #         Ok(()) // Staged writes are simply dropped.
+/// #     }
+/// # }
+/// #
+/// # impl Storage for MemStore {
+/// #     type Transaction<'a> = MemTx<'a>;
+/// #     type Error = StorageError;
+/// #
+/// #     fn begin_read(&self) -> Result<MemTx<'_>, StorageError> {
+/// #         Ok(MemTx { store: self, writable: false, inserted: Vec::new(), removed: Vec::new() })
+/// #     }
+/// #
+/// #     fn begin_write(&self) -> Result<MemTx<'_>, StorageError> {
+/// #         Ok(MemTx { store: self, writable: true, inserted: Vec::new(), removed: Vec::new() })
+/// #     }
+/// #
+/// #     fn quad_count(&self) -> Result<u64, StorageError> {
+/// #         Ok(self.quads.lock().unwrap().len() as u64)
+/// #     }
+/// #
+/// #     fn named_graphs(&self) -> Result<Vec<NamedNode>, StorageError> {
+/// #         let mut graphs: Vec<NamedNode> = self
+/// #             .quads
+/// #             .lock()
+/// #             .unwrap()
+/// #             .iter()
+/// #             .filter_map(|q| match &q.graph {
+/// #                 NamedOrDefault::Named(g) => Some(g.clone()),
+/// #                 NamedOrDefault::Default => None,
+/// #             })
+/// #             .collect();
+/// #         graphs.sort();
+/// #         graphs.dedup();
+/// #         Ok(graphs)
+/// #     }
+/// #
+/// #     fn capabilities(&self) -> StorageCapabilities {
+/// #         StorageCapabilities {
+/// #             persistent: false,
+/// #             concurrent_writes: false,
+/// #             bulk_load: false,
+/// #             sparql_endpoint: false,
+/// #             approximate_quad_count: false,
+/// #             isolation: TransactionIsolation::ReadCommitted,
+/// #         }
+/// #     }
+/// # }
+/// #
+/// # /// Insert `quads` in one committed write transaction.
+/// # fn load(store: &MemStore, quads: &[Quad]) {
+/// #     let mut tx = store.begin_write().unwrap();
+/// #     for q in quads {
+/// #         tx.insert(q).unwrap();
+/// #     }
+/// #     tx.commit().unwrap();
+/// # }
+/// #
+/// # /// Shorthand for an `https://example.org/` IRI.
+/// # fn ex(local: &str) -> NamedNode {
+/// #     NamedNode::new(format!("https://example.org/{local}"))
+/// # }
+/// use semanticore_core::model::Literal;
+/// use semanticore_core::reasoner::{Reasoner, ReasonerCapabilities, ReasonerView};
+/// use semanticore_core::shacl::{
+///     NodeValidationResult, PropertyPath, Severity, ShaclValidationReport, ShaclValidator,
+///     ValidationResult,
+/// };
+///
+/// const SH: &str = "http://www.w3.org/ns/shacl#";
+/// const RDF_TYPE: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
+///
+/// fn sh(local: &str) -> NamedNode {
+///     NamedNode::new(format!("{SH}{local}"))
+/// }
+///
+/// /// A toy validator. It reads a deliberately flattened shapes graph
+/// /// (`?shape sh:targetClass ?c` and `?shape sh:path ?p`) and checks
+/// /// "every instance of `?c` has at least one `?p`". It is not SHACL Core.
+/// struct MinCountOne;
+///
+/// impl MinCountOne {
+///     fn objects(tx: &MemTx<'_>, s: &NamedOrBlankNode, p: &NamedNode) -> Result<Vec<Term>, StorageError> {
+///         tx.quads_for_pattern(Some(s), Some(p), None, None)
+///             .map(|q| q.map(|q| q.object))
+///             .collect()
+///     }
+///
+///     fn check(
+///         data: &MemStore,
+///         shapes: &MemStore,
+///         only: Option<&NamedOrBlankNode>,
+///     ) -> Result<Vec<ValidationResult>, StorageError> {
+///         let (data, shapes) = (data.begin_read()?, shapes.begin_read()?);
+///         let mut results = Vec::new();
+///         for target in shapes.quads_for_pattern(None, Some(&sh("targetClass")), None, None) {
+///             let target = target?;
+///             let shape = target.subject;
+///             for path in Self::objects(&shapes, &shape, &sh("path"))? {
+///                 let Term::Named(path) = path else { continue };
+///                 for member in data.quads_for_pattern(None, Some(&NamedNode::new(RDF_TYPE)), Some(&target.object), None) {
+///                     let focus = member?.subject;
+///                     if only.is_some_and(|f| *f != focus) {
+///                         continue;
+///                     }
+///                     if Self::objects(&data, &focus, &path)?.is_empty() {
+///                         results.push(ValidationResult {
+///                             focus_node: focus.into(),
+///                             result_severity: Severity::Violation,
+///                             source_constraint_component: sh("MinCountConstraintComponent"),
+///                             result_path: Some(PropertyPath::Predicate(path.clone())),
+///                             value: None,
+///                             source_shape: Some(shape.clone()),
+///                             result_message: Some("missing required value".into()),
+///                             detail: Vec::new(),
+///                         });
+///                     }
+///                 }
+///             }
+///         }
+///         Ok(results)
+///     }
+/// }
+///
+/// impl Reasoner for MinCountOne {
+///     type Storage = MemStore;
+///     type Error = StorageError;
+///
+///     fn capabilities(&self) -> ReasonerCapabilities {
+///         ReasonerCapabilities::default()
+///     }
+///
+///     fn over<'a>(&'a self, storage: &'a MemStore) -> ReasonerView<'a, Self> {
+///         ReasonerView::new(self, storage)
+///     }
+/// }
+///
+/// impl ShaclValidator for MinCountOne {
+///     fn validate(&self, data: &MemStore, shapes: &MemStore) -> Result<ShaclValidationReport, StorageError> {
+///         Ok(ShaclValidationReport::from_results(Self::check(data, shapes, None)?))
+///     }
+///
+///     fn validate_node(
+///         &self,
+///         data: &MemStore,
+///         shapes: &MemStore,
+///         focus: &NamedOrBlankNode,
+///     ) -> Result<NodeValidationResult, StorageError> {
+///         let results = Self::check(data, shapes, Some(focus))?;
+///         Ok(NodeValidationResult { focus: focus.clone(), conforms: results.is_empty(), results })
+///     }
+///
+///     fn supports_sparql_constraints(&self) -> bool {
+///         false
+///     }
+/// }
+///
+/// // Shapes and data live in separate stores.
+/// let shapes = MemStore::default();
+/// load(&shapes, &[
+///     Quad::triple(ex("PersonShape").into(), sh("targetClass"), ex("Person").into()),
+///     Quad::triple(ex("PersonShape").into(), sh("path"), ex("name").into()),
+/// ]);
+/// let data = MemStore::default();
+/// let is_person = |who: &str| Quad::triple(ex(who).into(), NamedNode::new(RDF_TYPE), ex("Person").into());
+/// load(&data, &[
+///     is_person("alice"),
+///     Quad::triple(ex("alice").into(), ex("name"), Literal::new_simple("Alice").into()),
+///     is_person("bob"), // no name
+/// ]);
+///
+/// let validator = MinCountOne;
+/// let report = validator.validate(&data, &shapes)?;
+/// assert!(!report.conforms);
+/// assert_eq!(report.results.len(), 1);
+/// assert_eq!(report.results[0].focus_node, Term::from(ex("bob")));
+///
+/// assert!(validator.validate_node(&data, &shapes, &ex("alice").into())?.conforms);
+/// assert!(!validator.supports_sparql_constraints());
+/// # Ok::<(), StorageError>(())
+/// ```
 pub trait ShaclValidator: Reasoner {
     /// Validate `data` against `shapes`, producing a SHACL Core conformant
     /// report. `data` and `shapes` are separate stores so deployments can keep
