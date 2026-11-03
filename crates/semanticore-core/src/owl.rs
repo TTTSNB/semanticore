@@ -1,11 +1,15 @@
 //! OWL reasoning return types (RFC 0003).
 //!
-//! These are the OSS-side result types of [`crate::reasoner::OwlReasoner`]
-//! (`classify` / `realize` / `check_consistency`). They are backend-neutral and
-//! carry no premium type: the hand-rolled OWL axiom IR lives in the premium
-//! `semanticore-reasoner-owl-core` crate; the OSS core only needs the opaque
-//! [`Axiom`] carrier so the (deferred) explanation surface does not leak a
-//! premium type through a trait signature.
+//! These are the result types of [`crate::reasoner::OwlReasoner`]
+//! (`classify` / `realize` / `check_consistency`) and the shared [`OwlError`]
+//! family. They are backend-neutral: an engine keeps its own axiom
+//! representation internally, and this crate only needs the opaque [`Axiom`]
+//! carrier so the (deferred) explanation surface does not expose any engine's
+//! internal types through a trait signature.
+//!
+//! The OWL trait itself, [`crate::reasoner::OwlReasoner`], lives in
+//! [`crate::reasoner`] next to the supertraits it extends; its documentation
+//! includes a compiling toy implementation that returns these types.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -85,17 +89,18 @@ impl ConsistencyResult {
     }
 }
 
-/// Opaque OSS-side axiom handle for explanation traces. The full hand-rolled
-/// axiom IR lives in `semanticore-reasoner-owl-core`; the OSS core only needs an
-/// opaque, comparable carrier so the (deferred) explanation surface does not leak
-/// a premium type through a trait return. v0.1 explanations are always empty.
+/// Opaque axiom handle for explanation traces. Engines keep their own axiom
+/// representation; this crate only needs an opaque, comparable carrier so the
+/// (deferred) explanation surface does not expose engine-internal types through
+/// a trait return. v0.1 explanations are always empty.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Axiom(pub String);
 
-/// The OWL reasoning family error. Shared by all four engines (EL/QL/RL/DL) so the
-/// dispatch facade can unify error handling. Mirrors the `ShaclError`/`DatalogError`
-/// pattern; the `License` variant carries the feature name as a string so core
-/// takes no dependency on the premium licensing crate.
+/// The OWL reasoning family error. Shared by engines for all four profiles
+/// (EL/QL/RL/DL) so callers can handle errors uniformly. Mirrors
+/// [`crate::shacl::ShaclError`] and [`crate::datalog::DatalogError`]; the
+/// `License` variant carries the feature name as a string so this crate takes
+/// no licensing dependency.
 #[derive(Debug, thiserror::Error)]
 pub enum OwlError {
     /// An RDF graph could not be parsed into the OWL axiom IR.

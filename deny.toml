@@ -1,0 +1,86 @@
+# cargo-deny configuration for the semantiCore workspace.
+#
+# Run locally with:
+#
+#     cargo install cargo-deny --locked
+#     cargo deny check
+#
+# CI runs the same command in the `deny` job of .github/workflows/ci.yml.
+# Reference: https://embarkstudios.github.io/cargo-deny/
+
+[graph]
+# Evaluate every feature so optional dependencies are covered too.
+all-features = true
+
+[output]
+feature-depth = 1
+
+# ---------------------------------------------------------------------------
+# Security advisories (RustSec advisory database)
+# ---------------------------------------------------------------------------
+[advisories]
+# Vulnerabilities and unsound advisories always fail. Unmaintained crates fail
+# only when they are direct or transitive dependencies of workspace crates.
+unmaintained = "workspace"
+yanked = "deny"
+# Add entries as { id = "RUSTSEC-YYYY-NNNN", reason = "..." } when an
+# advisory has been assessed and accepted.
+ignore = []
+
+# ---------------------------------------------------------------------------
+# Licenses
+# ---------------------------------------------------------------------------
+# The open tier is Apache-2.0. Only permissive licenses that are compatible
+# with redistribution under Apache-2.0 are allowed. Copyleft licenses (GPL,
+# LGPL, AGPL, MPL, EPL, ...) are rejected by omission.
+[licenses]
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "MIT",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "BSL-1.0",
+    "Unicode-3.0",
+    "CC0-1.0",
+]
+confidence-threshold = 0.93
+# The allow list is a policy, not an inventory; don't warn about entries that
+# no current dependency happens to use.
+unused-allowed-license = "allow"
+exceptions = []
+
+[licenses.private]
+# Unpublished workspace members do not need a license entry.
+ignore = true
+
+# ---------------------------------------------------------------------------
+# Bans
+# ---------------------------------------------------------------------------
+[bans]
+# Two semver-incompatible versions of the same crate (e.g. thiserror 1.x and
+# 2.x) in the graph fail the check. When a duplicate is unavoidable (an
+# upstream crate lags a major bump), add it to `skip` or `skip-tree` with a
+# reason rather than relaxing this setting.
+multiple-versions = "deny"
+wildcards = "deny"
+# Path dependencies between workspace members are fine.
+allow-wildcard-paths = true
+highlight = "all"
+workspace-default-features = "allow"
+external-default-features = "allow"
+deny = []
+skip = []
+skip-tree = []
+
+# ---------------------------------------------------------------------------
+# Sources
+# ---------------------------------------------------------------------------
+[sources]
+# Only crates.io; no git or alternate registries.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
