@@ -28,6 +28,47 @@ cargo fmt --check && cargo clippy -- -D warnings && cargo test
 
 Drop that into `.git/hooks/pre-commit` and `chmod +x` it; CI will reject any patch that doesn't pass these three gates, so catching it locally saves a round trip.
 
+## CI checks
+
+`.github/workflows/ci.yml` runs these jobs on every pull request to `main`:
+
+| Job | What it runs | Blocking |
+| --- | --- | --- |
+| `lint` | `cargo fmt --check`, `cargo clippy -D warnings` | yes (required check) |
+| `test` | `cargo test --all --all-features` on stable | yes (required check) |
+| `msrv (1.88)` | build and test on exactly Rust 1.88, the declared `rust-version` | yes |
+| `docs` | `cargo doc --no-deps` with `RUSTDOCFLAGS="-D warnings"`, `cargo test --doc` | yes |
+| `publish dry-run` | `cargo publish --dry-run -p semanticore-core` | yes |
+| `cargo-deny` | `cargo deny check` against `deny.toml` (advisories, licenses, bans, sources) | yes |
+| `semver-checks` | `cargo semver-checks` against the latest crates.io release | informational |
+
+To run the extra gates locally:
+
+```sh
+cargo +1.88 test --workspace --all-features
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features
+cargo test --workspace --doc --all-features
+cargo publish --dry-run -p semanticore-core
+cargo install cargo-deny --locked && cargo deny check
+cargo install cargo-semver-checks --locked && cargo semver-checks -p semanticore-core
+```
+
+If you raise the MSRV, update `rust-version` in the root `Cargo.toml` and the toolchain and job name of the `msrv` job in the same commit.
+
+All actions in the workflow are pinned to full commit SHAs, with the tag recorded in a trailing comment. Update both when bumping an action.
+
+### Semver checks
+
+`semver-checks` compares the public API of `semanticore-core` against its latest release on crates.io. Until 0.1.0 is published there is nothing to compare against, so the job checks crates.io, emits a "skipped" notice, and passes. It is also marked `continue-on-error: true`, so any violation it reports does not fail the workflow.
+
+To make it blocking once 0.1.0 is on crates.io:
+
+1. In `.github/workflows/ci.yml`, delete `continue-on-error: true` from the `semver` job.
+2. In the same job, delete the "Look for a published baseline" step and the `if:` line on the "cargo semver-checks" step, so the check always runs (a missing baseline then fails loudly instead of skipping).
+3. In the repository's branch protection rule for `main`, add `semver-checks` to the required status checks.
+
+After that, a breaking API change needs a version bump that semver allows (for 0.x, a minor bump such as 0.1 → 0.2) before it can merge.
+
 ## Commit conventions
 
 semantiCore uses [Conventional Commits](https://www.conventionalcommits.org/). Every commit subject must start with one of:
