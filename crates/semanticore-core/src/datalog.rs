@@ -1,14 +1,14 @@
 //! The `DatalogEngine` trait, the canonical program IR, and result types
 //! (RFC 0003).
 //!
-//! The program IR here is backend-neutral: it carries no Polars/Arrow types. A
-//! pluggable parser (in the premium engine) produces a [`DatalogProgram`]; the
-//! engine evaluates it against an extensional database read through
-//! [`crate::storage::Storage`] and returns a [`DatalogResult`] of derived facts.
-//! The trait surface is fixed at the RFC 0003 scope (stratified negation; the
-//! `NegationKind` enum is forward-compatible for well-founded); existential
-//! rules / the chase and dual-mode materialization are layered by the premium
-//! engine as concrete methods pending the RFC 0003 amendment.
+//! The program IR here is backend-neutral: it carries no dataframe or columnar
+//! types. A parser (supplied by an engine or by the caller) produces a
+//! [`DatalogProgram`]; the engine evaluates it against an extensional database
+//! read through [`crate::storage::Storage`] and returns a [`DatalogResult`] of
+//! derived facts. The trait surface is fixed at the RFC 0003 scope (stratified
+//! negation; the [`NegationKind`] enum is forward-compatible with well-founded
+//! semantics). Extensions beyond that scope are left to engines as inherent
+//! methods.
 
 use std::collections::HashMap;
 
@@ -16,6 +16,281 @@ use crate::model::{NamedNode, Term};
 use crate::reasoner::Reasoner;
 
 /// A Datalog engine.
+///
+/// # Example
+///
+/// A toy engine for single-atom rule bodies, called through the trait:
+///
+/// ```
+/// # use std::sync::Mutex;
+/// #
+/// # use semanticore_core::model::{NamedNode, NamedOrBlankNode, NamedOrDefault, Quad, Term};
+/// # use semanticore_core::storage::{
+/// #     Storage, StorageCapabilities, StorageError, StorageTransaction, TransactionIsolation,
+/// # };
+/// #
+/// # /// A toy in-memory store: one `Vec<Quad>` behind a mutex.
+/// # #[derive(Default)]
+/// # struct MemStore {
+/// #     quads: Mutex<Vec<Quad>>,
+/// # }
+/// #
+/// # /// A transaction that stages writes locally and applies them on commit.
+/// # struct MemTx<'a> {
+/// #     store: &'a MemStore,
+/// #     writable: bool,
+/// #     inserted: Vec<Quad>,
+/// #     removed: Vec<Quad>,
+/// # }
+/// #
+/// # impl MemTx<'_> {
+/// #     /// The committed quads with this transaction's staged writes applied.
+/// #     fn snapshot(&self) -> Vec<Quad> {
+/// #         let base = self.store.quads.lock().unwrap();
+/// #         base.iter()
+/// #             .filter(|q| !self.removed.contains(q))
+/// #             .chain(self.inserted.iter())
+/// #             .cloned()
+/// #             .collect()
+/// #     }
+/// #
+/// #     fn check_writable(&self) -> Result<(), StorageError> {
+/// #         if self.writable {
+/// #             Ok(())
+/// #         } else {
+/// #             Err(StorageError::Backend("read-only transaction".into()))
+/// #         }
+/// #     }
+/// # }
+/// #
+/// # impl StorageTransaction for MemTx<'_> {
+/// #     type Error = StorageError;
+/// #
+/// #     fn insert(&mut self, quad: &Quad) -> Result<bool, StorageError> {
+/// #         self.check_writable()?;
+/// #         if self.contains(quad)? {
+/// #             return Ok(false);
+/// #         }
+/// #         match self.removed.iter().position(|q| q == quad) {
+/// #             Some(i) => {
+/// #                 self.removed.swap_remove(i);
+/// #             }
+/// #             None => self.inserted.push(quad.clone()),
+/// #         }
+/// #         Ok(true)
+/// #     }
+/// #
+/// #     fn remove(&mut self, quad: &Quad) -> Result<bool, StorageError> {
+/// #         self.check_writable()?;
+/// #         if !self.contains(quad)? {
+/// #             return Ok(false);
+/// #         }
+/// #         match self.inserted.iter().position(|q| q == quad) {
+/// #             Some(i) => {
+/// #                 self.inserted.swap_remove(i);
+/// #             }
+/// #             None => self.removed.push(quad.clone()),
+/// #         }
+/// #         Ok(true)
+/// #     }
+/// #
+/// #     fn contains(&self, quad: &Quad) -> Result<bool, StorageError> {
+/// #         Ok(self.snapshot().contains(quad))
+/// #     }
+/// #
+/// #     fn quads_for_pattern<'a>(
+/// #         &'a self,
+/// #         s: Option<&NamedOrBlankNode>,
+/// #         p: Option<&NamedNode>,
+/// #         o: Option<&Term>,
+/// #         g: Option<&NamedOrDefault>,
+/// #     ) -> Box<dyn Iterator<Item = Result<Quad, StorageError>> + 'a> {
+/// #         let (s, p, o, g) = (s.cloned(), p.cloned(), o.cloned(), g.cloned());
+/// #         // A real backend streams from an index; the toy filters a snapshot.
+/// #         Box::new(
+/// #             self.snapshot()
+/// #                 .into_iter()
+/// #                 .filter(move |q| {
+/// #                     s.as_ref().is_none_or(|s| &q.subject == s)
+/// #                         && p.as_ref().is_none_or(|p| &q.predicate == p)
+/// #                         && o.as_ref().is_none_or(|o| &q.object == o)
+/// #                         && g.as_ref().is_none_or(|g| &q.graph == g)
+/// #                 })
+/// #                 .map(Ok),
+/// #         )
+/// #     }
+/// #
+/// #     fn commit(self) -> Result<(), StorageError> {
+/// #         let store = self.store;
+/// #         let mut base = store.quads.lock().unwrap();
+/// #         base.retain(|q| !self.removed.contains(q));
+/// #         base.extend(self.inserted);
+/// #         Ok(())
+/// #     }
+/// #
+/// #     fn rollback(self) -> Result<(), StorageError> {
+/// #         Ok(()) // Staged writes are simply dropped.
+/// #     }
+/// # }
+/// #
+/// # impl Storage for MemStore {
+/// #     type Transaction<'a> = MemTx<'a>;
+/// #     type Error = StorageError;
+/// #
+/// #     fn begin_read(&self) -> Result<MemTx<'_>, StorageError> {
+/// #         Ok(MemTx { store: self, writable: false, inserted: Vec::new(), removed: Vec::new() })
+/// #     }
+/// #
+/// #     fn begin_write(&self) -> Result<MemTx<'_>, StorageError> {
+/// #         Ok(MemTx { store: self, writable: true, inserted: Vec::new(), removed: Vec::new() })
+/// #     }
+/// #
+/// #     fn quad_count(&self) -> Result<u64, StorageError> {
+/// #         Ok(self.quads.lock().unwrap().len() as u64)
+/// #     }
+/// #
+/// #     fn named_graphs(&self) -> Result<Vec<NamedNode>, StorageError> {
+/// #         let mut graphs: Vec<NamedNode> = self
+/// #             .quads
+/// #             .lock()
+/// #             .unwrap()
+/// #             .iter()
+/// #             .filter_map(|q| match &q.graph {
+/// #                 NamedOrDefault::Named(g) => Some(g.clone()),
+/// #                 NamedOrDefault::Default => None,
+/// #             })
+/// #             .collect();
+/// #         graphs.sort();
+/// #         graphs.dedup();
+/// #         Ok(graphs)
+/// #     }
+/// #
+/// #     fn capabilities(&self) -> StorageCapabilities {
+/// #         StorageCapabilities {
+/// #             persistent: false,
+/// #             concurrent_writes: false,
+/// #             bulk_load: false,
+/// #             sparql_endpoint: false,
+/// #             approximate_quad_count: false,
+/// #             isolation: TransactionIsolation::ReadCommitted,
+/// #         }
+/// #     }
+/// # }
+/// #
+/// # /// Insert `quads` in one committed write transaction.
+/// # fn load(store: &MemStore, quads: &[Quad]) {
+/// #     let mut tx = store.begin_write().unwrap();
+/// #     for q in quads {
+/// #         tx.insert(q).unwrap();
+/// #     }
+/// #     tx.commit().unwrap();
+/// # }
+/// #
+/// # /// Shorthand for an `https://example.org/` IRI.
+/// # fn ex(local: &str) -> NamedNode {
+/// #     NamedNode::new(format!("https://example.org/{local}"))
+/// # }
+/// use semanticore_core::datalog::{
+///     Atom, BodyLiteral, DatalogEngine, DatalogProgram, DatalogResult, DatalogTerm, NegationKind,
+///     Rule,
+/// };
+/// use semanticore_core::reasoner::{Reasoner, ReasonerCapabilities, ReasonerView};
+///
+/// /// A toy engine: evaluates non-recursive rules whose body is one positive
+/// /// binary atom, reading the EDB as `predicate(subject, object)` quads.
+/// #[derive(Default)]
+/// struct OneStep {
+///     program: DatalogProgram,
+/// }
+///
+/// impl Reasoner for OneStep {
+///     type Storage = MemStore;
+///     type Error = StorageError;
+///
+///     fn capabilities(&self) -> ReasonerCapabilities {
+///         ReasonerCapabilities::default()
+///     }
+///
+///     fn over<'a>(&'a self, storage: &'a MemStore) -> ReasonerView<'a, Self> {
+///         ReasonerView::new(self, storage)
+///     }
+/// }
+///
+/// impl DatalogEngine for OneStep {
+///     fn load_program(&mut self, program: &DatalogProgram) -> Result<(), StorageError> {
+///         let supported = program.rules.iter().all(|r| {
+///             matches!(r.body.as_slice(), [BodyLiteral::Positive(a)] if a.terms.len() == 2)
+///         });
+///         if !supported {
+///             return Err(StorageError::Backend("unsupported rule shape".into()));
+///         }
+///         self.program = program.clone();
+///         Ok(())
+///     }
+///
+///     fn evaluate(&self, edb: &MemStore) -> Result<DatalogResult, StorageError> {
+///         let tx = edb.begin_read()?;
+///         let mut result = DatalogResult::new();
+///         for rule in &self.program.rules {
+///             let [BodyLiteral::Positive(body)] = rule.body.as_slice() else { continue };
+///             for quad in tx.quads_for_pattern(None, Some(&body.predicate), None, None) {
+///                 let quad = quad?;
+///                 let row = [Term::from(quad.subject), quad.object];
+///                 // Bind body variables to the quad's subject/object.
+///                 let lookup = |t: &DatalogTerm| match t {
+///                     DatalogTerm::Const(c) => Some(c.clone()),
+///                     DatalogTerm::Var(v) => body
+///                         .terms
+///                         .iter()
+///                         .position(|b| matches!(b, DatalogTerm::Var(w) if w == v))
+///                         .map(|i| row[i].clone()),
+///                 };
+///                 let consts_match = body.terms.iter().zip(&row).all(|(t, value)| match t {
+///                     DatalogTerm::Const(c) => c == value,
+///                     DatalogTerm::Var(_) => true,
+///                 });
+///                 if let (true, Some(tuple)) =
+///                     (consts_match, rule.head.terms.iter().map(lookup).collect::<Option<Vec<_>>>())
+///                 {
+///                     result.add_fact(rule.head.predicate.clone(), tuple);
+///                 }
+///             }
+///         }
+///         Ok(result)
+///     }
+///
+///     fn supports_negation(&self) -> NegationKind {
+///         NegationKind::None
+///     }
+///
+///     fn supports_aggregation(&self) -> bool {
+///         false
+///     }
+/// }
+///
+/// let edb = MemStore::default();
+/// load(&edb, &[
+///     Quad::triple(ex("alice").into(), ex("parent"), ex("bob").into()),
+///     Quad::triple(ex("bob").into(), ex("parent"), ex("carol").into()),
+/// ]);
+///
+/// // child(Y, X) :- parent(X, Y).
+/// let var = |n: &str| DatalogTerm::Var(n.into());
+/// let mut program = DatalogProgram::new();
+/// program.rules.push(Rule::new(
+///     Atom::new(ex("child"), vec![var("Y"), var("X")]),
+///     vec![BodyLiteral::Positive(Atom::new(ex("parent"), vec![var("X"), var("Y")]))],
+/// ));
+///
+/// let mut engine = OneStep::default();
+/// engine.load_program(&program)?;
+/// let result = engine.evaluate(&edb)?;
+/// assert_eq!(result.total_facts(), 2);
+/// let children = result.relation(&ex("child")).unwrap();
+/// assert!(children.contains(&vec![ex("bob").into(), ex("alice").into()]));
+/// assert_eq!(engine.supports_negation(), NegationKind::None);
+/// # Ok::<(), StorageError>(())
+/// ```
 pub trait DatalogEngine: Reasoner {
     /// Load a program, replacing any previously loaded one. Stratification /
     /// acyclicity checks run here and may reject the program.
@@ -137,7 +412,7 @@ impl DatalogProgram {
 
 /// The result of evaluating a program: derived facts grouped by predicate. Each
 /// fact is the tuple of ground terms in argument order. Backend-neutral (no
-/// DataFrame); the premium engine projects this to per-predicate frames.
+/// dataframe); engines may project it to other shapes outside this crate.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct DatalogResult {
     relations: HashMap<NamedNode, Vec<Vec<Term>>>,
