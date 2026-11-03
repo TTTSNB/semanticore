@@ -20,6 +20,8 @@ workspace = true
 
 [dev-dependencies]
 proptest = "1.12.0"
+# Dev-only and unpublished; path-only dev-dependencies are stripped on publish.
+semanticore-storage-testkit = { path = "../semanticore-storage-testkit" }
 
 [package.metadata.docs.rs]
 # docs.rs reads this table from the package manifest, not the workspace.

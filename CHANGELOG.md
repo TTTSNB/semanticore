@@ -4,6 +4,18 @@ All notable changes to the open-tier crates are recorded here. The format follow
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/). Before 1.0, minor versions may break APIs.
 
+## [Unreleased]
+
+### Added
+- `semanticore-store-oxigraph` 0.1.0: the first `Storage` backend, over
+  Oxigraph 0.5.13, in-memory (`OxigraphStore::in_memory`) and file-backed
+  (`OxigraphStore::open`, `OxigraphStore::open_read_only`).
+- `semanticore-storage-testkit` (dev-only, unpublished): the RFC 0002 storage
+  contract as functions generic over `S: Storage`, the
+  `storage_contract_suite!` macro, quad strategies and the reference
+  `MemStore`. `semanticore-core`'s storage tests now run through it, so every
+  backend runs the identical suite.
+
 ## [0.1.0] - Unreleased
 
 First release of `semanticore-core`: the backend-neutral storage and reasoner
