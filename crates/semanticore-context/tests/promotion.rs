@@ -276,3 +276,12 @@ fn cadence_never_disables_auto_promotion() {
     s.promote(&[a], Minor, Major).unwrap();
     assert_eq!(s.scope_of(a), Some(Major));
 }
+
+#[test]
+fn duplicate_ids_are_moved_once() {
+    let (_dir, mut s) = session();
+    let a = s.add(Minor, fact("a", "p", "b")).unwrap();
+    assert_eq!(s.promote(&[a, a], Minor, Major).unwrap().promoted, 1);
+    assert_eq!(s.scope_of(a), Some(Major));
+    assert_eq!(ids(&s, subject_in(Major, "a")), vec![a]);
+}

@@ -9,7 +9,10 @@ use semanticore_core::model::{NamedOrDefault, Quad};
 #[test]
 fn context_item_constructors_fill_the_rfc_fields() {
     let t = ContextItem::triples(vec![triple("a", "p", ex("b"))], prov());
-    assert_eq!(t.payload, ContextPayload::Triples(vec![triple("a", "p", ex("b"))]));
+    assert_eq!(
+        t.payload,
+        ContextPayload::Triples(vec![triple("a", "p", ex("b"))])
+    );
     assert_eq!(t.provenance, prov());
     assert_eq!(t.scope_hint, None);
     assert_eq!(t.embedding, None);
@@ -116,7 +119,11 @@ fn add_refuses_derivation_from_unknown_items() {
 #[test]
 fn add_batch_returns_ids_in_input_order() {
     let (_dir, mut s) = session();
-    let items = [fact("a", "p", "b"), fact("c", "p", "d"), fact("e", "p", "f")];
+    let items = [
+        fact("a", "p", "b"),
+        fact("c", "p", "d"),
+        fact("e", "p", "f"),
+    ];
     let ids = s.add_batch(ContextScope::Major, &items).unwrap();
     assert_eq!(ids.len(), 3);
     let snap = s.snapshot(ContextScope::Major).unwrap();
@@ -165,4 +172,14 @@ fn items_sharing_a_triple_are_independent() {
     assert_eq!(ids(&s, subject_in(ContextScope::Major, "a")), vec![a, b]);
     s.remove(ContextScope::Major, &a).unwrap();
     assert_eq!(ids(&s, subject_in(ContextScope::Major, "a")), vec![b]);
+}
+
+#[test]
+fn add_refuses_non_finite_embeddings() {
+    let (_dir, mut s) = session();
+    let item = fact("a", "p", "b").with_embedding(vec![1.0, f32::NAN]);
+    assert!(matches!(
+        s.add(ContextScope::Major, item),
+        Err(SessionError::InvalidItem { .. })
+    ));
 }

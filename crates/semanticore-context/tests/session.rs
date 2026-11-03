@@ -203,3 +203,94 @@ fn session_is_send_and_sync() {
     fn assert_send_sync<T: Send + Sync>() {}
     assert_send_sync::<Session<OxigraphStore>>();
 }
+
+/// Copy every quad of a closed enduring store into a fresh in-memory store.
+fn copy_of(dir: &std::path::Path) -> OxigraphStore {
+    use semanticore_core::storage::StorageTransaction;
+    let src = OxigraphStore::open(dir).unwrap();
+    let quads: Vec<_> = {
+        let tx = src.begin_read().unwrap();
+        let q = tx
+            .quads_for_pattern(None, None, None, None)
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        q
+    };
+    let dst = OxigraphStore::in_memory().unwrap();
+    let mut tx = dst.begin_write().unwrap();
+    for q in &quads {
+        tx.insert(q).unwrap();
+    }
+    tx.commit().unwrap();
+    dst
+}
+
+#[test]
+fn a_copy_left_in_two_tiers_resolves_to_the_more_durable_one() {
+    // Simulates a move interrupted between writing the target and deleting
+    // the source: the same item is stored in both enduring and major.
+    let dir = tempfile::tempdir().unwrap();
+    let id = {
+        let mut s = Session::open(config(dir.path())).unwrap();
+        let id = s.add(ContextScope::Enduring, fact("a", "p", "b")).unwrap();
+        s.close().unwrap();
+        id
+    };
+    let major = copy_of(dir.path());
+    let s = Session::open(SessionConfig::new(StorageConfig::PerScope {
+        enduring: OxigraphStore::open(dir.path()).unwrap(),
+        major,
+        minor: OxigraphStore::in_memory().unwrap(),
+    }))
+    .unwrap();
+    assert_eq!(s.scope_of(id), Some(ContextScope::Enduring));
+    assert_eq!(s.item_count(ContextScope::Major), 0);
+}
+
+#[test]
+fn open_reports_corrupt_metadata() {
+    use semanticore_core::model::{Literal, NamedNode, NamedOrDefault, Quad};
+    use semanticore_core::storage::StorageTransaction;
+    let dir = tempfile::tempdir().unwrap();
+    {
+        let store = OxigraphStore::open(dir.path()).unwrap();
+        let mut tx = store.begin_write().unwrap();
+        tx.insert(&Quad::new(
+            NamedNode::new("urn:semanticore:context:item:0").into(),
+            NamedNode::new("urn:semanticore:context:record"),
+            Literal::new_simple("{not json").into(),
+            NamedOrDefault::Named(NamedNode::new("urn:semanticore:context:meta")),
+        ))
+        .unwrap();
+        tx.commit().unwrap();
+    }
+    assert!(matches!(
+        Session::open(config(dir.path())),
+        Err(SessionError::Corrupt { .. })
+    ));
+}
+
+#[test]
+fn open_reports_metadata_on_a_foreign_subject() {
+    use semanticore_core::model::{Literal, NamedOrDefault, Quad};
+    use semanticore_core::storage::StorageTransaction;
+    let dir = tempfile::tempdir().unwrap();
+    {
+        let store = OxigraphStore::open(dir.path()).unwrap();
+        let mut tx = store.begin_write().unwrap();
+        tx.insert(&Quad::new(
+            ex("not-an-item").into(),
+            semanticore_core::model::NamedNode::new("urn:semanticore:context:record"),
+            Literal::new_simple("{}").into(),
+            NamedOrDefault::Named(semanticore_core::model::NamedNode::new(
+                "urn:semanticore:context:meta",
+            )),
+        ))
+        .unwrap();
+        tx.commit().unwrap();
+    }
+    assert!(matches!(
+        Session::open(config(dir.path())),
+        Err(SessionError::Corrupt { .. })
+    ));
+}

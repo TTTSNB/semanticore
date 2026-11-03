@@ -23,7 +23,10 @@ fn evict_items_drops_them_and_returns_the_count() {
     let a = s.add(Major, fact("a", "p", "b")).unwrap();
     let b = s.add(Major, fact("b", "p", "c")).unwrap();
     let keep = s.add(Major, fact("c", "p", "d")).unwrap();
-    assert_eq!(s.evict(Major, EvictionCriteria::Items(vec![a, b])).unwrap(), 2);
+    assert_eq!(
+        s.evict(Major, EvictionCriteria::Items(vec![a, b])).unwrap(),
+        2
+    );
     assert_eq!(s.scope_of(a), None);
     assert_eq!(s.scope_of(b), None);
     assert_eq!(ids(&s, everything_in(Major)), vec![keep]);
@@ -82,13 +85,7 @@ fn demote_refuses_a_target_that_is_not_colder() {
     let (_dir, mut s) = session();
     let a = s.add(Major, fact("a", "p", "b")).unwrap();
     for to in [Major, Enduring] {
-        match s.evict(
-            Major,
-            EvictionCriteria::Demote {
-                items: vec![a],
-                to,
-            },
-        ) {
+        match s.evict(Major, EvictionCriteria::Demote { items: vec![a], to }) {
             Err(SessionError::DurabilityViolation { from, to: got }) => {
                 assert_eq!((from, got), (Major, to));
             }
@@ -135,7 +132,11 @@ fn demotion_resets_the_minor_access_window() {
     )
     .unwrap();
     s.query(subject_in(Minor, "a")).unwrap();
-    assert_eq!(s.scope_of(a), Some(Minor), "earlier accesses were forgotten");
+    assert_eq!(
+        s.scope_of(a),
+        Some(Minor),
+        "earlier accesses were forgotten"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -143,7 +144,9 @@ fn demotion_resets_the_minor_access_window() {
 // ---------------------------------------------------------------------------
 
 fn three_major(
-    tweak: impl FnOnce(&mut semanticore_context::SessionConfig<semanticore_store_oxigraph::OxigraphStore>),
+    tweak: impl FnOnce(
+        &mut semanticore_context::SessionConfig<semanticore_store_oxigraph::OxigraphStore>,
+    ),
 ) -> (
     tempfile::TempDir,
     Session<semanticore_store_oxigraph::OxigraphStore>,
@@ -161,7 +164,11 @@ fn lru_evicts_the_least_recently_touched_item() {
     let (_dir, mut s, [a, b, c]) = three_major(|c| c.eviction_policy = EvictionPolicy::Lru);
     s.query(subject_in(Major, "a")).unwrap();
     s.query(subject_in(Major, "c")).unwrap();
-    assert_eq!(s.evict(Major, EvictionCriteria::Policy { count: 1 }).unwrap(), 1);
+    assert_eq!(
+        s.evict(Major, EvictionCriteria::Policy { count: 1 })
+            .unwrap(),
+        1
+    );
     assert_eq!(s.scope_of(b), None);
     assert_eq!(s.scope_of(a), Some(Major));
     assert_eq!(s.scope_of(c), Some(Major));
@@ -175,7 +182,11 @@ fn lfu_evicts_the_least_frequently_accessed_items() {
     }
     s.query(subject_in(Major, "b")).unwrap();
     // `c` was never accessed but is the newest: LFU still picks it first.
-    assert_eq!(s.evict(Major, EvictionCriteria::Policy { count: 2 }).unwrap(), 2);
+    assert_eq!(
+        s.evict(Major, EvictionCriteria::Policy { count: 2 })
+            .unwrap(),
+        2
+    );
     assert_eq!(s.scope_of(c), None);
     assert_eq!(s.scope_of(b), None);
     assert_eq!(s.scope_of(a), Some(Major));
@@ -184,7 +195,8 @@ fn lfu_evicts_the_least_frequently_accessed_items() {
 #[test]
 fn lfu_breaks_ties_by_age() {
     let (_dir, mut s, [a, b, c]) = three_major(|c| c.eviction_policy = EvictionPolicy::Lfu);
-    s.evict(Major, EvictionCriteria::Policy { count: 1 }).unwrap();
+    s.evict(Major, EvictionCriteria::Policy { count: 1 })
+        .unwrap();
     assert_eq!(s.scope_of(a), None);
     assert_eq!(s.scope_of(b), Some(Major));
     assert_eq!(s.scope_of(c), Some(Major));
@@ -204,7 +216,8 @@ fn recency_weighted_with_a_long_half_life_favours_frequency() {
     s.query(subject_in(Major, "c")).unwrap();
     s.query(subject_in(Major, "c")).unwrap();
     // LRU would evict `a`; with a long half-life `b` has the lowest weight.
-    s.evict(Major, EvictionCriteria::Policy { count: 1 }).unwrap();
+    s.evict(Major, EvictionCriteria::Policy { count: 1 })
+        .unwrap();
     assert_eq!(s.scope_of(b), None);
     assert_eq!(s.scope_of(a), Some(Major));
 }
@@ -223,7 +236,8 @@ fn recency_weighted_with_a_short_half_life_favours_recency() {
     s.query(subject_in(Major, "b")).unwrap();
     s.query(subject_in(Major, "c")).unwrap();
     // LFU would evict `b` or `c`; with a short half-life `a` has decayed.
-    s.evict(Major, EvictionCriteria::Policy { count: 1 }).unwrap();
+    s.evict(Major, EvictionCriteria::Policy { count: 1 })
+        .unwrap();
     assert_eq!(s.scope_of(a), None);
     assert_eq!(s.scope_of(b), Some(Major));
 }
@@ -231,7 +245,11 @@ fn recency_weighted_with_a_short_half_life_favours_recency() {
 #[test]
 fn policy_eviction_of_more_items_than_present_empties_the_scope() {
     let (_dir, mut s, _) = three_major(|_| {});
-    assert_eq!(s.evict(Major, EvictionCriteria::Policy { count: 10 }).unwrap(), 3);
+    assert_eq!(
+        s.evict(Major, EvictionCriteria::Policy { count: 10 })
+            .unwrap(),
+        3
+    );
     assert_eq!(s.item_count(Major), 0);
 }
 
@@ -242,7 +260,8 @@ fn policy_eviction_of_more_items_than_present_empties_the_scope() {
 #[test]
 fn demotion_target_drop_discards_victims() {
     let (_dir, mut s, [a, ..]) = three_major(|c| c.demotion_target = DemotionTarget::Drop);
-    s.evict(Major, EvictionCriteria::Policy { count: 1 }).unwrap();
+    s.evict(Major, EvictionCriteria::Policy { count: 1 })
+        .unwrap();
     assert_eq!(s.scope_of(a), None);
     assert_eq!(s.item_count(Minor), 0);
 }
@@ -250,7 +269,11 @@ fn demotion_target_drop_discards_victims() {
 #[test]
 fn demotion_target_next_colder_moves_victims_down_one_tier() {
     let (_dir, mut s, [a, ..]) = three_major(|c| c.demotion_target = DemotionTarget::NextColder);
-    assert_eq!(s.evict(Major, EvictionCriteria::Policy { count: 1 }).unwrap(), 1);
+    assert_eq!(
+        s.evict(Major, EvictionCriteria::Policy { count: 1 })
+            .unwrap(),
+        1
+    );
     assert_eq!(s.scope_of(a), Some(Minor));
     let stats = s.close().unwrap();
     assert_eq!((stats.items_demoted, stats.items_evicted), (1, 0));
@@ -260,14 +283,16 @@ fn demotion_target_next_colder_moves_victims_down_one_tier() {
 fn demotion_out_of_minor_always_drops() {
     let (_dir, mut s) = session_with(|c| c.demotion_target = DemotionTarget::NextColder);
     let a = s.add(Minor, fact("a", "p", "b")).unwrap();
-    s.evict(Minor, EvictionCriteria::Policy { count: 1 }).unwrap();
+    s.evict(Minor, EvictionCriteria::Policy { count: 1 })
+        .unwrap();
     assert_eq!(s.scope_of(a), None);
 }
 
 #[test]
 fn one_step_then_drop_drops_items_that_were_added_directly() {
     let (_dir, mut s, [a, ..]) = three_major(|_| {}); // default target
-    s.evict(Major, EvictionCriteria::Policy { count: 1 }).unwrap();
+    s.evict(Major, EvictionCriteria::Policy { count: 1 })
+        .unwrap();
     assert_eq!(s.scope_of(a), None);
 }
 
@@ -277,10 +302,12 @@ fn one_step_then_drop_demotes_promoted_items_once_then_drops_them() {
     let a = s.add(Major, fact("a", "p", "b")).unwrap();
     s.promote(&[a], Major, Enduring).unwrap();
     // Recently promoted: one step colder rather than dropped.
-    s.evict(Enduring, EvictionCriteria::Policy { count: 1 }).unwrap();
+    s.evict(Enduring, EvictionCriteria::Policy { count: 1 })
+        .unwrap();
     assert_eq!(s.scope_of(a), Some(Major));
     // Arrived by demotion: dropped rather than demoted again.
-    s.evict(Major, EvictionCriteria::Policy { count: 1 }).unwrap();
+    s.evict(Major, EvictionCriteria::Policy { count: 1 })
+        .unwrap();
     assert_eq!(s.scope_of(a), None);
 }
 
@@ -346,4 +373,22 @@ fn unbounded_tiers_never_evict() {
         s.add(Minor, fact(&format!("i{i}"), "p", "x")).unwrap();
     }
     assert_eq!(s.item_count(Minor), 50);
+}
+
+#[test]
+fn duplicate_ids_are_evicted_once() {
+    let (_dir, mut s) = session();
+    let a = s.add(Major, fact("a", "p", "b")).unwrap();
+    let b = s.add(Major, fact("b", "p", "b")).unwrap();
+    let demote = EvictionCriteria::Demote {
+        items: vec![a, a],
+        to: Minor,
+    };
+    assert_eq!(s.evict(Major, demote).unwrap(), 1);
+    assert_eq!(ids(&s, subject_in(Minor, "a")), vec![a]);
+    assert_eq!(
+        s.evict(Major, EvictionCriteria::Items(vec![b, b])).unwrap(),
+        1
+    );
+    assert_eq!(s.scope_of(b), None);
 }

@@ -38,8 +38,11 @@ fn context_query_builders_fill_the_rfc_fields() {
 #[test]
 fn pattern_query_returns_matching_items_with_score_one() {
     let (_dir, mut s) = session();
-    let alice = s.add(ContextScope::Major, fact("alice", "knows", "bob")).unwrap();
-    s.add(ContextScope::Major, fact("carol", "knows", "bob")).unwrap();
+    let alice = s
+        .add(ContextScope::Major, fact("alice", "knows", "bob"))
+        .unwrap();
+    s.add(ContextScope::Major, fact("carol", "knows", "bob"))
+        .unwrap();
     let res = s.query(subject_in(ContextScope::Major, "alice")).unwrap();
     assert_eq!(res.items.len(), 1);
     let hit = &res.items[0];
@@ -52,7 +55,9 @@ fn pattern_query_returns_matching_items_with_score_one() {
 #[test]
 fn pattern_matches_on_predicate_and_object() {
     let (_dir, mut s) = session();
-    let a = s.add(ContextScope::Minor, fact("a", "likes", "tea")).unwrap();
+    let a = s
+        .add(ContextScope::Minor, fact("a", "likes", "tea"))
+        .unwrap();
     let lit = ContextItem::triples(vec![triple("b", "name", Literal::new_simple("B"))], prov());
     let b = s.add(ContextScope::Minor, lit).unwrap();
     let by_pred = ContextQuery::pattern(
@@ -86,8 +91,11 @@ fn events_and_chunks_never_match_patterns() {
         ContextItem::event("turn", serde_json::json!({}), prov()),
     )
     .unwrap();
-    s.add(ContextScope::Major, ContextItem::chunk("hi", "text/plain", prov()))
-        .unwrap();
+    s.add(
+        ContextScope::Major,
+        ContextItem::chunk("hi", "text/plain", prov()),
+    )
+    .unwrap();
     assert!(ids(&s, everything_in(ContextScope::Major)).is_empty());
 }
 
@@ -166,7 +174,10 @@ fn query_stats_count_scopes_and_matching_quads() {
 #[test]
 fn sparql_queries_are_not_yet_implemented() {
     let (_dir, s) = session();
-    let q = ContextQuery::new(ScopeSelection::All, ContextQueryKind::Sparql("ASK {}".into()));
+    let q = ContextQuery::new(
+        ScopeSelection::All,
+        ContextQueryKind::Sparql("ASK {}".into()),
+    );
     assert!(matches!(
         s.query(q),
         Err(SessionError::NotYetImplemented(Unimplemented::Sparql))
@@ -205,7 +216,9 @@ fn inference_queries_are_not_yet_implemented() {
     );
     assert!(matches!(
         s.query(q),
-        Err(SessionError::NotYetImplemented(Unimplemented::OwlElReasoner))
+        Err(SessionError::NotYetImplemented(
+            Unimplemented::OwlElReasoner
+        ))
     ));
 }
 
@@ -215,14 +228,19 @@ fn a_reasoner_hint_is_not_yet_implemented() {
     let q = everything_in(ContextScope::Major).with_reasoner_hint(ContextScope::Major);
     assert!(matches!(
         s.query(q),
-        Err(SessionError::NotYetImplemented(Unimplemented::OwlElReasoner))
+        Err(SessionError::NotYetImplemented(
+            Unimplemented::OwlElReasoner
+        ))
     ));
 }
 
 #[test]
 fn refused_queries_are_not_counted_as_served() {
     let (_dir, s) = session();
-    let q = ContextQuery::new(ScopeSelection::All, ContextQueryKind::Sparql("ASK {}".into()));
+    let q = ContextQuery::new(
+        ScopeSelection::All,
+        ContextQueryKind::Sparql("ASK {}".into()),
+    );
     assert!(s.query(q).is_err());
     assert_eq!(s.close().unwrap().queries_served, 0);
 }

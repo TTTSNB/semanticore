@@ -7,6 +7,12 @@ All notable changes to the open-tier crates are recorded here. The format follow
 ## [Unreleased]
 
 ### Added
+- `semanticore-context` 0.1.0 (skeleton, RFC 0004): `Session` over enduring
+  (file-backed Oxigraph), major and minor (in-memory Oxigraph) tiers, with
+  `ContextItem`, pattern `ContextQuery`/`ContextQueryResult`, explicit and
+  automatic promotion, eviction and demotion under `ScopeBounds`. SHACL and
+  Datalog return a premium-only error; the OWL 2 EL reasoner, ANN index and
+  SPARQL return a not-yet-implemented error.
 - `semanticore-store-oxigraph` 0.1.0: the first `Storage` backend, over
   Oxigraph 0.5.13, in-memory (`OxigraphStore::in_memory`) and file-backed
   (`OxigraphStore::open`, `OxigraphStore::open_read_only`).
