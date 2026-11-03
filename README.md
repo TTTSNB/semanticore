@@ -19,11 +19,14 @@ For a single-page overview, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## What ships in the open tier (Apache 2.0)
 
-- `semanticore-core`; the foundational types, identifiers, and graph primitives every other crate builds on.
-- `semanticore-context`; the Context OS (formerly Theseus internally); context modeling, lifecycle, and resolution.
-- `semanticore-projection`; bidirectional RDF and labeled-property-graph projection with round-trip metadata and interpretation profiles (formerly Metasemantics internally).
+- `semanticore-core`; the foundational types, identifiers, and graph primitives every other crate builds on, plus the `Storage` and reasoner traits. Release candidate for 0.1.0.
+- `semanticore-store-oxigraph`; the first `Storage` backend (in-memory and file-backed), with a shared contract test suite in the unpublished `semanticore-storage-testkit`.
+- `semanticore-context`; the Context OS (formerly Theseus internally); v0.1 skeleton: sessions over enduring, major and minor tiers with promotion and eviction. The OWL 2 EL reasoner, ANN index and SPARQL queries are not implemented yet.
+- `semanticore-projection`; bidirectional RDF and labeled-property-graph projection with round-trip metadata and interpretation profiles (formerly Metasemantics internally). Specified, not started.
 
-Bindings: Python via PyO3 and TypeScript via napi-rs are first-class targets; both ship from the same Rust core so behavior stays identical across runtimes.
+Bindings: Python via PyO3 (`semanticore-context-py`, abi3 wheel, unpublished) exists; TypeScript via napi-rs is not started. Both ship from the same Rust core so behavior stays identical across runtimes.
+
+Agents and new contributors: see [AGENTS.md](AGENTS.md).
 
 ## Premium tier
 
@@ -36,7 +39,7 @@ Pre-1.0. Active development. APIs are unstable.
 - Phase 0 — decisions resolved
 - Phase 1 — repo + infrastructure scaffolded
 - Phase 2 — architecture spec complete (RFCs 0001–0005)
-- Phase 3 — open-tier implementation: the reasoner trait surface ships as `semanticore-core` 0.1.0
+- Phase 3 — open-tier implementation in progress: `semanticore-core` trait surface, the Oxigraph storage backend, the `semanticore-context` skeleton and its Python binding have landed
 
 First release: `semanticore-core` 0.1.0, the storage and reasoner trait surface (SHACL, Datalog, OWL). See [CHANGELOG.md](CHANGELOG.md).
 
@@ -46,7 +49,7 @@ First release: `semanticore-core` 0.1.0, the storage and reasoner trait surface 
 cargo add semanticore-core
 ```
 
-`semanticore-context` and `semanticore-projection` (RFCs 0004 and 0005) are specified but not yet published.
+`semanticore-store-oxigraph`, `semanticore-context` and `semanticore-projection` are not yet published (projection is not yet implemented).
 
 ```sh
 pip install semanticore

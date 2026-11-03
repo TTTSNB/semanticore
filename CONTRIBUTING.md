@@ -40,6 +40,7 @@ Drop that into `.git/hooks/pre-commit` and `chmod +x` it; CI will reject any pat
 | `docs` | `cargo doc --no-deps` with `RUSTDOCFLAGS="-D warnings"`, `cargo test --doc` | yes |
 | `publish dry-run` | `cargo publish --dry-run -p semanticore-core` | yes |
 | `cargo-deny` | `cargo deny check` against `deny.toml` (advisories, licenses, bans, sources) | yes |
+| `python (3.10, 3.13)` | maturin abi3 wheel, pytest, `.pyi` stub check for `semanticore-context-py` | yes |
 | `semver-checks` | `cargo semver-checks` against the latest crates.io release | informational |
 
 To run the extra gates locally:

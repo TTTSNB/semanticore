@@ -5,7 +5,7 @@
 
 ## Status
 
-Pre-1.0. Active development. APIs unstable. Current phase: Phase 2 — Architecture spec, just closed.
+Pre-1.0. Active development. APIs unstable. Current phase: Phase 3 — open-tier MVP in progress (Phase 2 architecture spec closed).
 
 ## Project shape
 
@@ -25,9 +25,10 @@ A user with only the OSS tier installed gets a working semantiCore: single-proce
 ### Open tier (Apache 2.0)
 
 - `semanticore-core` — shared types (IRIs, terms, triples, quads) and trait definitions (Storage, reasoner traits)
-- `semanticore-context` — Context OS (Session, ContextScope, default OSS reasoners)
+- `semanticore-store-oxigraph` — the Oxigraph `Storage` backend (in-memory and file-backed); `semanticore-storage-testkit` is its dev-only shared contract suite
+- `semanticore-context` — Context OS (Session, ContextScope, default OSS reasoners); v0.1 skeleton landed, OWL EL reasoner and ANN index pending
 - `semanticore-projection` — bidirectional RDF↔LPG with round-trip metadata and profile registry
-- `semanticore-context-py` / `semanticore-context-ts` — Python (PyO3, sync) and TypeScript (napi-rs, async) bindings
+- `semanticore-context-py` / `semanticore-context-ts` — Python (PyO3, sync; implemented, unpublished) and TypeScript (napi-rs, async; not started) bindings
 - `semanticore-projection-py` / `semanticore-projection-ts` — projection bindings
 
 ### Premium tier (commercial license)
@@ -126,7 +127,7 @@ Plan-of-record sequenced (no calendar; "grind till it's done"):
 | 0 | done | Decisions resolved |
 | 1 | done | Repo + infra scaffolding |
 | 2 | done | Architecture spec (this milestone) |
-| 3 | next | Open-tier MVP |
+| 3 | in progress | Open-tier MVP |
 | 4 | | Premium-tier MVP |
 | 5 | | Benchmark suite |
 | 6 | | Business plan + go-to-market |
@@ -146,7 +147,7 @@ The architecture phase surfaced and resolved five points of inconsistency or ope
 
 4. **Tier-to-Feature mapping is decoupled at v0.1.** The `License` carries a `features: Vec<Feature>` directly; the `Tier` enum (`Team` / `Business` / `Enterprise`) is informational only. Server-side enforcement only at v0.1; client-side defense-in-depth deferred. (RFC 0006 Open Question.)
 
-5. **Bindings layout `crates/bindings/...` is aspirational.** Workspace `members` will gain the binding entries during Phase 3 when the binding crates are scaffolded; the current workspace `Cargo.toml` does not yet enumerate them. (RFC 0001 Implementation notes.)
+5. **Bindings layout `crates/bindings/...` is aspirational.** The Python binding now lives at `crates/semanticore-context-py` and is a workspace member; the TypeScript binding has not been scaffolded. (RFC 0001 Implementation notes.)
 
 ## License
 
