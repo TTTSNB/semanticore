@@ -1,23 +1,15 @@
-//! Pinned failing cases found by the property tests. Each is `#[ignore]`d
-//! because fixing it would change library behaviour, which is out of scope
-//! for the test-only PR that added them. Run them with
-//! `cargo test --test regressions -- --ignored`.
+//! Regression tests for defects first found by the property tests.
 //!
-//! A fix could make the constructor reject the input (panic or a fallible
-//! constructor) or normalise it. These tests accept either a rejection
-//! (panic) or a well-formed result. A fallible-constructor fix will need the
-//! test rewritten to match the new signature.
+//! Both were pinned as `#[ignore]`d tests when they were found. They now
+//! pass: `Literal::new_typed` and `Literal::new_lang` return
+//! `Result<Literal, LiteralError>` and reject ill-formed input, so an
+//! ill-formed `Literal` cannot be constructed.
 
-use std::panic;
-
-use semanticore_core::model::{Literal, NamedNode, RDF_LANG_STRING};
+use semanticore_core::model::{Literal, LiteralError, NamedNode, RDF_LANG_STRING};
 
 /// RDF 1.1 Concepts §3.3: a literal is a language-tagged string iff its
 /// datatype IRI is `rdf:langString`, and then its language tag is non-empty.
-fn assert_well_formed_or_rejected(build: impl FnOnce() -> Literal + panic::UnwindSafe) {
-    let Ok(l) = panic::catch_unwind(build) else {
-        return; // Rejected at construction: acceptable.
-    };
+fn assert_well_formed(l: &Literal) {
     let is_lang_dt = l.datatype().as_str() == RDF_LANG_STRING;
     assert_eq!(
         is_lang_dt,
@@ -29,29 +21,44 @@ fn assert_well_formed_or_rejected(build: impl FnOnce() -> Literal + panic::Unwin
     }
 }
 
-/// DEFECT (spec divergence): `Literal::new_typed` accepts `rdf:langString`
-/// as the datatype and returns a literal whose datatype is `rdf:langString`
-/// but whose `language()` is `None`. RDF 1.1 does not allow that literal.
-/// A backend that enforces the rule would have to reject or rewrite it, so
-/// the term would not round-trip through storage unchanged.
+/// Formerly a defect: `Literal::new_typed` accepted `rdf:langString` as the
+/// datatype and returned a literal whose datatype was `rdf:langString` but
+/// whose `language()` was `None`. RDF 1.1 does not allow that literal.
 ///
 /// Found by proptest (`literal_well_formed` with `rdf:langString` in the
 /// datatype strategy). Minimal input: `value = ""`, `datatype = rdf:langString`.
 #[test]
-#[ignore = "defect: Literal::new_typed accepts rdf:langString without a language tag"]
-fn new_typed_rejects_or_normalises_rdf_lang_string() {
-    assert_well_formed_or_rejected(|| Literal::new_typed("", NamedNode::new(RDF_LANG_STRING)));
+fn new_typed_rejects_rdf_lang_string() {
+    assert_eq!(
+        Literal::new_typed("", NamedNode::new(RDF_LANG_STRING)),
+        Err(LiteralError::LangStringWithoutTag)
+    );
+    // The well-formed way to build that literal still works.
+    assert_well_formed(&Literal::new_lang("", "en").unwrap());
 }
 
-/// DEFECT (spec divergence): `Literal::new_lang` accepts an empty language
-/// tag and returns `language() == Some("")`. RDF 1.1 needs a non-empty
-/// BCP 47 tag. `Display` then prints `"x"@`, which is not valid
-/// N-Triples/Turtle either.
+/// Formerly a defect: `Literal::new_lang` accepted an empty language tag and
+/// returned `language() == Some("")`, which `Display` printed as `"x"@`.
+/// RDF 1.1 needs a non-empty BCP 47 tag.
 ///
 /// Found by proptest (`literal_well_formed` over arbitrary tags). Minimal
 /// input: `value = ""`, `language = ""`.
 #[test]
-#[ignore = "defect: Literal::new_lang accepts an empty language tag"]
-fn new_lang_rejects_or_normalises_empty_tag() {
-    assert_well_formed_or_rejected(|| Literal::new_lang("", ""));
+fn new_lang_rejects_empty_tag() {
+    assert_eq!(
+        Literal::new_lang("", ""),
+        Err(LiteralError::EmptyLanguageTag)
+    );
+    assert_well_formed(&Literal::new_lang("", "fr").unwrap());
+}
+
+/// The errors render a message that names the rule that was broken.
+#[test]
+fn literal_error_display() {
+    assert!(LiteralError::LangStringWithoutTag
+        .to_string()
+        .contains("rdf:langString"));
+    assert!(LiteralError::EmptyLanguageTag
+        .to_string()
+        .contains("non-empty"));
 }

@@ -81,8 +81,26 @@ pub struct Literal {
     language: Option<String>,
 }
 
+/// Why a [`Literal`] constructor rejected its input.
+///
+/// RDF 1.1 Concepts §3.3: a literal has a language tag if and only if its
+/// datatype IRI is `rdf:langString`, and the tag is non-empty. The fallible
+/// constructors return this error instead of building a literal that breaks
+/// that rule, so every `Literal` value is well-formed.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[non_exhaustive]
+pub enum LiteralError {
+    /// [`Literal::new_typed`] was given `rdf:langString` as the datatype. A
+    /// language-tagged string needs a tag; build it with [`Literal::new_lang`].
+    #[error("datatype rdf:langString requires a language tag; use Literal::new_lang")]
+    LangStringWithoutTag,
+    /// [`Literal::new_lang`] was given an empty language tag.
+    #[error("language tag must be non-empty")]
+    EmptyLanguageTag,
+}
+
 impl Literal {
-    /// A plain `xsd:string` literal.
+    /// A plain `xsd:string` literal. Always well-formed.
     pub fn new_simple(value: impl Into<String>) -> Self {
         Self {
             value: value.into(),
@@ -92,21 +110,45 @@ impl Literal {
     }
 
     /// A typed literal with an explicit datatype.
-    pub fn new_typed(value: impl Into<String>, datatype: NamedNode) -> Self {
-        Self {
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LiteralError::LangStringWithoutTag`] if `datatype` is
+    /// `rdf:langString` ([`RDF_LANG_STRING`]): such a literal must carry a
+    /// language tag, so use [`Literal::new_lang`] instead.
+    pub fn new_typed(value: impl Into<String>, datatype: NamedNode) -> Result<Self, LiteralError> {
+        if datatype.as_str() == RDF_LANG_STRING {
+            return Err(LiteralError::LangStringWithoutTag);
+        }
+        Ok(Self {
             value: value.into(),
             datatype,
             language: None,
-        }
+        })
     }
 
     /// A language-tagged string (`rdf:langString`).
-    pub fn new_lang(value: impl Into<String>, language: impl Into<String>) -> Self {
-        Self {
+    ///
+    /// The tag is stored verbatim; only emptiness is checked. Full BCP 47
+    /// validation and case normalization are left to the producing layer, as
+    /// for [`NamedNode::new`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LiteralError::EmptyLanguageTag`] if `language` is empty.
+    pub fn new_lang(
+        value: impl Into<String>,
+        language: impl Into<String>,
+    ) -> Result<Self, LiteralError> {
+        let language = language.into();
+        if language.is_empty() {
+            return Err(LiteralError::EmptyLanguageTag);
+        }
+        Ok(Self {
             value: value.into(),
             datatype: NamedNode::new(RDF_LANG_STRING),
-            language: Some(language.into()),
-        }
+            language: Some(language),
+        })
     }
 
     /// The lexical form.
@@ -286,7 +328,7 @@ mod tests {
 
     #[test]
     fn lang_literal_carries_tag_and_langstring_datatype() {
-        let l = Literal::new_lang("bonjour", "fr");
+        let l = Literal::new_lang("bonjour", "fr").unwrap();
         assert_eq!(l.language(), Some("fr"));
         assert_eq!(l.datatype().as_str(), RDF_LANG_STRING);
         assert_eq!(l.to_string(), "\"bonjour\"@fr");
@@ -295,8 +337,24 @@ mod tests {
     #[test]
     fn typed_literal_keeps_datatype() {
         let dt = NamedNode::new("http://www.w3.org/2001/XMLSchema#integer");
-        let l = Literal::new_typed("42", dt.clone());
+        let l = Literal::new_typed("42", dt.clone()).unwrap();
         assert_eq!(l.datatype(), &dt);
+    }
+
+    #[test]
+    fn typed_literal_rejects_lang_string_datatype() {
+        assert_eq!(
+            Literal::new_typed("x", NamedNode::new(RDF_LANG_STRING)),
+            Err(LiteralError::LangStringWithoutTag)
+        );
+    }
+
+    #[test]
+    fn lang_literal_rejects_empty_tag() {
+        assert_eq!(
+            Literal::new_lang("x", ""),
+            Err(LiteralError::EmptyLanguageTag)
+        );
     }
 
     #[test]

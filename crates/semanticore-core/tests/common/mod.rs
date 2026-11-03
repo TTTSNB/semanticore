@@ -16,6 +16,7 @@ use std::sync::Mutex;
 use proptest::prelude::*;
 use semanticore_core::model::{
     xsd, BlankNode, Literal, NamedNode, NamedOrBlankNode, NamedOrDefault, Quad, Term,
+    RDF_LANG_STRING,
 };
 use semanticore_core::storage::{
     Storage, StorageCapabilities, StorageError, StorageTransaction, TransactionIsolation,
@@ -45,8 +46,8 @@ pub fn small_blank() -> impl Strategy<Value = BlankNode> {
     "[a-c]{1,2}".prop_map(BlankNode::new)
 }
 
-/// Datatypes for typed literals. Deliberately excludes `rdf:langString`;
-/// see `tests/regressions.rs` for why.
+/// Datatypes that `Literal::new_typed` accepts. `rdf:langString` is left
+/// out because `new_typed` rejects it; `small_datatype_any` includes it.
 pub fn small_datatype() -> impl Strategy<Value = NamedNode> {
     prop_oneof![
         Just(NamedNode::new(xsd::STRING)),
@@ -55,13 +56,27 @@ pub fn small_datatype() -> impl Strategy<Value = NamedNode> {
     ]
 }
 
-/// Well-formed literals: simple, typed (non-langString), or with a non-empty
-/// language tag.
+/// Every datatype `small_datatype` yields, plus `rdf:langString`, which
+/// `Literal::new_typed` must reject.
+pub fn small_datatype_any() -> impl Strategy<Value = NamedNode> {
+    prop_oneof![small_datatype(), Just(NamedNode::new(RDF_LANG_STRING))]
+}
+
+/// Language tags including the empty tag, which `Literal::new_lang` must
+/// reject.
+pub fn small_tag_any() -> impl Strategy<Value = String> {
+    "(|en|fr|en-GB)".prop_map(String::from)
+}
+
+/// Literals built from constructor inputs that are known to be accepted:
+/// simple, typed (not `rdf:langString`), or with a non-empty language tag.
 pub fn small_literal() -> impl Strategy<Value = Literal> {
     prop_oneof![
         "[a-c ]{0,3}".prop_map(Literal::new_simple),
-        ("[a-c ]{0,3}", small_datatype()).prop_map(|(v, d)| Literal::new_typed(v, d)),
-        ("[a-c ]{0,3}", "(en|fr|en-GB)").prop_map(|(v, l)| Literal::new_lang(v, l)),
+        ("[a-c ]{0,3}", small_datatype())
+            .prop_map(|(v, d)| Literal::new_typed(v, d).expect("datatype is not rdf:langString")),
+        ("[a-c ]{0,3}", "(en|fr|en-GB)")
+            .prop_map(|(v, l)| Literal::new_lang(v, l).expect("tag is non-empty")),
     ]
 }
 
@@ -107,8 +122,14 @@ pub fn any_blank() -> impl Strategy<Value = BlankNode> {
 pub fn any_literal() -> impl Strategy<Value = Literal> {
     prop_oneof![
         any::<String>().prop_map(Literal::new_simple),
-        (any::<String>(), any_named()).prop_map(|(v, d)| Literal::new_typed(v, d)),
-        (any::<String>(), any::<String>()).prop_map(|(v, l)| Literal::new_lang(v, l)),
+        // Arbitrary inputs; the constructors reject the ill-formed ones
+        // (an `rdf:langString` datatype, an empty tag).
+        (any::<String>(), any_named())
+            .prop_filter_map("rejected by new_typed", |(v, d)| Literal::new_typed(v, d)
+                .ok()),
+        (any::<String>(), any::<String>())
+            .prop_filter_map("rejected by new_lang", |(v, l)| Literal::new_lang(v, l)
+                .ok()),
     ]
 }
 

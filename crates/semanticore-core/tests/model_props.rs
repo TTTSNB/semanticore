@@ -15,7 +15,7 @@ use std::hash::{Hash, Hasher};
 use common::*;
 use proptest::prelude::*;
 use semanticore_core::model::{
-    xsd, BlankNode, Literal, NamedNode, NamedOrBlankNode, NamedOrDefault, Quad, Term,
+    xsd, BlankNode, Literal, LiteralError, NamedNode, NamedOrBlankNode, NamedOrDefault, Quad, Term,
     RDF_LANG_STRING,
 };
 use semanticore_core::Iri;
@@ -82,28 +82,63 @@ proptest! {
         prop_assert_eq!(simple.datatype().as_str(), xsd::STRING);
         prop_assert_eq!(simple.language(), None);
 
-        let typed = Literal::new_typed(v.clone(), d.clone());
-        prop_assert_eq!(typed.value(), v.as_str());
-        prop_assert_eq!(typed.datatype(), &d);
-        prop_assert_eq!(typed.language(), None);
+        // Accepted inputs round-trip; rejected ones are exactly the
+        // ill-formed ones (checked in `literal_well_formed`).
+        if let Ok(typed) = Literal::new_typed(v.clone(), d.clone()) {
+            prop_assert_eq!(typed.value(), v.as_str());
+            prop_assert_eq!(typed.datatype(), &d);
+            prop_assert_eq!(typed.language(), None);
+        }
 
-        let lang = Literal::new_lang(v.clone(), l.clone());
-        prop_assert_eq!(lang.value(), v.as_str());
-        prop_assert_eq!(lang.datatype().as_str(), RDF_LANG_STRING);
-        prop_assert_eq!(lang.language(), Some(l.as_str()));
+        if let Ok(lang) = Literal::new_lang(v.clone(), l.clone()) {
+            prop_assert_eq!(lang.value(), v.as_str());
+            prop_assert_eq!(lang.datatype().as_str(), RDF_LANG_STRING);
+            prop_assert_eq!(lang.language(), Some(l.as_str()));
+        }
     }
 
-    /// RDF 1.1 well-formedness — a literal carries a language tag iff its
-    /// datatype is `rdf:langString`, and the tag is non-empty — holds for
-    /// every literal the generators produce. The two inputs outside this
-    /// domain (typed `rdf:langString`, empty tag) are pinned in
-    /// `tests/regressions.rs`.
+    /// RDF 1.1 Concepts §3.3 well-formedness: a literal carries a language
+    /// tag iff its datatype is `rdf:langString`, and the tag is non-empty.
+    ///
+    /// Covers every constructor over its whole input domain, including
+    /// `rdf:langString` as a datatype and the empty tag. Each constructor
+    /// either returns a well-formed literal or returns `Err` exactly when the
+    /// input is ill-formed.
     #[test]
-    fn literal_well_formed(l in small_literal()) {
-        let is_lang_dt = l.datatype().as_str() == RDF_LANG_STRING;
-        prop_assert_eq!(is_lang_dt, l.language().is_some());
-        if let Some(tag) = l.language() {
-            prop_assert!(!tag.is_empty());
+    fn literal_well_formed(
+        v in "[a-c ]{0,3}",
+        d in small_datatype_any(),
+        t in small_tag_any(),
+        any_v in any::<String>(),
+        any_t in any::<String>(),
+    ) {
+        fn check(l: &Literal) -> Result<(), TestCaseError> {
+            let is_lang_dt = l.datatype().as_str() == RDF_LANG_STRING;
+            prop_assert_eq!(is_lang_dt, l.language().is_some(), "{:?}", l);
+            if let Some(tag) = l.language() {
+                prop_assert!(!tag.is_empty(), "{:?}", l);
+            }
+            Ok(())
+        }
+
+        check(&Literal::new_simple(v.clone()))?;
+
+        match Literal::new_typed(v.clone(), d.clone()) {
+            Ok(l) => check(&l)?,
+            Err(e) => {
+                prop_assert_eq!(d.as_str(), RDF_LANG_STRING);
+                prop_assert_eq!(e, LiteralError::LangStringWithoutTag);
+            }
+        }
+
+        for (value, tag) in [(v, t), (any_v, any_t)] {
+            match Literal::new_lang(value, tag.clone()) {
+                Ok(l) => check(&l)?,
+                Err(e) => {
+                    prop_assert!(tag.is_empty());
+                    prop_assert_eq!(e, LiteralError::EmptyLanguageTag);
+                }
+            }
         }
     }
 
@@ -114,7 +149,7 @@ proptest! {
     #[test]
     fn simple_literal_equals_xsd_string_typed(v in any::<String>()) {
         let a = Literal::new_simple(v.clone());
-        let b = Literal::new_typed(v, NamedNode::new(xsd::STRING));
+        let b = Literal::new_typed(v, NamedNode::new(xsd::STRING)).unwrap();
         prop_assert_eq!(&a, &b);
         prop_assert_eq!(hash_of(&a), hash_of(&b));
     }
@@ -126,15 +161,11 @@ proptest! {
         d1 in small_datatype(), d2 in small_datatype(),
         l1 in "(en|fr)", l2 in "(en|fr)",
     ) {
-        prop_assert_eq!(
-            Literal::new_typed(v1.clone(), d1.clone()) == Literal::new_typed(v2.clone(), d2.clone()),
-            v1 == v2 && d1 == d2
-        );
-        prop_assert_eq!(
-            Literal::new_lang(v1.clone(), l1.clone()) == Literal::new_lang(v2.clone(), l2.clone()),
-            v1 == v2 && l1 == l2
-        );
-        prop_assert_ne!(Literal::new_lang(v1.clone(), l1), Literal::new_simple(v1));
+        let typed = |v: &str, d: &NamedNode| Literal::new_typed(v, d.clone()).unwrap();
+        let lang = |v: &str, l: &str| Literal::new_lang(v, l).unwrap();
+        prop_assert_eq!(typed(&v1, &d1) == typed(&v2, &d2), v1 == v2 && d1 == d2);
+        prop_assert_eq!(lang(&v1, &l1) == lang(&v2, &l2), v1 == v2 && l1 == l2);
+        prop_assert_ne!(lang(&v1, &l1), Literal::new_simple(v1));
     }
 
     /// Term kinds never compare equal across variants, even with the same
@@ -241,18 +272,20 @@ proptest! {
     // ---- Display -----------------------------------------------------------
 
     #[test]
-    fn display_shapes(n in any_named(), b in any_blank(), v in any::<String>(), l in any::<String>()) {
+    fn display_shapes(n in any_named(), b in any_blank(), v in any::<String>(), l in ".+") {
         prop_assert_eq!(n.to_string(), format!("<{}>", n.as_str()));
         prop_assert_eq!(b.to_string(), format!("_:{}", b.as_str()));
-        prop_assert_eq!(
-            Literal::new_typed(v.clone(), n.clone()).to_string(),
-            format!("\"{v}\"^^<{}>", n.as_str())
-        );
+        if let Ok(typed) = Literal::new_typed(v.clone(), n.clone()) {
+            prop_assert_eq!(typed.to_string(), format!("\"{v}\"^^<{}>", n.as_str()));
+        }
         prop_assert_eq!(
             Literal::new_simple(v.clone()).to_string(),
             format!("\"{v}\"^^<{}>", xsd::STRING)
         );
-        prop_assert_eq!(Literal::new_lang(v.clone(), l.clone()).to_string(), format!("\"{v}\"@{l}"));
+        prop_assert_eq!(
+            Literal::new_lang(v.clone(), l.clone()).unwrap().to_string(),
+            format!("\"{v}\"@{l}")
+        );
     }
 
     /// `Term` / `NamedOrBlankNode` display delegates to the wrapped node.
